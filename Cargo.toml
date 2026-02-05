@@ -1,0 +1,9 @@
+# A from-scratch, educational SQL database implementation written in Rust.
+# Implements core SQL features (parsing, execution, storage) for learning purposes.
+# Not production-ready, but a fully-functional tour of database internals.
+[package]
+name = "rustdb"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
