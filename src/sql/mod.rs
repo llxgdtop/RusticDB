@@ -3,3 +3,4 @@ pub mod types;
 pub mod schema;
 pub mod plan;
 pub mod executor;
+pub mod engine;

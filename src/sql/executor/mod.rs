@@ -1,17 +1,16 @@
-use crate::{error::Result, sql::{executor::{mutation::Insert, query::Scan, schema::CreateTable}, plan::Node, types::Row}};
+use crate::{error::Result, sql::{engine::Transaction, executor::{mutation::Insert, query::Scan, schema::CreateTable}, plan::Node, types::Row}};
 
 mod schema;
 mod mutation;
 mod query;
 
 /// SQL executor trait
-pub trait Executor {
-    fn execute(&self) -> Result<ResultSet>;
+pub trait Executor<T: Transaction> {
+    fn execute(&self, txn:&mut T) -> Result<ResultSet>;
 }
 
-impl dyn Executor {
-    /// Builds an executor from an execution plan node
-    pub fn build(node: Node) -> Box<dyn Executor> {
+impl<T: Transaction> dyn Executor<T> {
+    pub fn build(node: Node) -> Box<dyn Executor<T>> {
         match node {
             Node::CreateTable { schema } => CreateTable::new(schema),
             Node::Insert {

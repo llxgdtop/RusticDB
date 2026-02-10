@@ -1,4 +1,4 @@
-use crate::sql::{parser::ast, plan::planner::Planner, schema::Table};
+use crate::{error::Result, sql::{engine::Transaction, executor::{Executor, ResultSet}, parser::ast, plan::planner::Planner, schema::Table}};
 
 mod planner;
 
@@ -29,6 +29,10 @@ impl Plan {
     /// Builds an execution plan from an AST statement
     pub fn build(stmt: ast::Statement) -> Self {
         Planner::new().build(stmt)
+    }
+
+    pub fn execute<T: Transaction>(self, txn: &mut T) -> Result<ResultSet> {
+        <dyn Executor<T>>::build(self.0).execute(txn)
     }
 }
 
