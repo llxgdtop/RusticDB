@@ -31,3 +31,6 @@ impl Value {
         }
     }
 }
+
+/// A row is a vector of values
+pub type Row = Vec<Value>;
