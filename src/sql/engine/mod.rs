@@ -31,7 +31,7 @@ pub trait Transaction {
     // DDL operations
     fn create_table(&mut self, table: Table) -> Result<()>;
     fn get_table(&self, table_name: String) -> Result<Option<Table>>;
-    // 获取表信息，不存在则报错
+    /// Returns table info, returns error if table doesn't exist
     fn must_get_table(&self, table_name: String) -> Result<Table> {
         self.get_table(table_name.clone())?
             .ok_or(Error::Internal(format!(

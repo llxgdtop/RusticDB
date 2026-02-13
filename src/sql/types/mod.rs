@@ -32,7 +32,7 @@ impl Value {
         }
     }
 
-    // 获取value的数据类型
+    /// Returns the data type of the value, or None if it's Null
     pub fn datatype(&self) -> Option<DataType> {
         match self {
             Self::Null => None,

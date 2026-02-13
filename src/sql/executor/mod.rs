@@ -6,8 +6,7 @@ mod query;
 
 /// SQL executor trait
 pub trait Executor<T: Transaction> {
-    // 不需要借用
-    fn execute(self: Box<Self>, txn:&mut T) -> Result<ResultSet>;
+    fn execute(self: Box<Self>, txn: &mut T) -> Result<ResultSet>;
 }
 
 impl<T: Transaction> dyn Executor<T> {
