@@ -6,7 +6,8 @@ mod query;
 
 /// SQL executor trait
 pub trait Executor<T: Transaction> {
-    fn execute(&self, txn:&mut T) -> Result<ResultSet>;
+    // 不需要借用
+    fn execute(self: Box<Self>, txn:&mut T) -> Result<ResultSet>;
 }
 
 impl<T: Transaction> dyn Executor<T> {
@@ -24,6 +25,7 @@ impl<T: Transaction> dyn Executor<T> {
 }
 
 /// Execution result set
+#[derive(Debug)]
 pub enum ResultSet {
     CreateTable { table_name: String },
     Insert { count: usize },

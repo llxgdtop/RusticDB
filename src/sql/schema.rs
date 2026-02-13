@@ -1,14 +1,16 @@
+use serde::{Deserialize, Serialize};
+
 use crate::sql::types::{DataType, Value};
 
 /// Table schema definition
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)] 
 pub struct Table {
     pub name: String,
     pub columns: Vec<Column>,
 }
 
 /// Column schema definition
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)] 
 pub struct Column {
     pub name: String,
     pub datatype: DataType,

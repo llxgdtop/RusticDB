@@ -1,7 +1,8 @@
+use serde::{Deserialize, Serialize};
 use crate::sql::parser::ast::{Consts, Expression};
 
 /// Supported SQL data types
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum DataType {
     Boolean,
     Integer,
@@ -10,7 +11,7 @@ pub enum DataType {
 }
 
 /// Runtime value type for expressions
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     Null,
     Boolean(bool),
@@ -28,6 +29,17 @@ impl Value {
             Expression::Consts(Consts::Integer(i)) => Self::Integer(i),
             Expression::Consts(Consts::Float(f)) => Self::Float(f),
             Expression::Consts(Consts::String(s)) => Self::String(s),
+        }
+    }
+
+    // 获取value的数据类型
+    pub fn datatype(&self) -> Option<DataType> {
+        match self {
+            Self::Null => None,
+            Self::Boolean(_) => Some(DataType::Boolean),
+            Self::Integer(_) => Some(DataType::Integer),
+            Self::Float(_) => Some(DataType::Float),
+            Self::String(_) => Some(DataType::String),
         }
     }
 }
