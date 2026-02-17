@@ -9,6 +9,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     Parse(String),
     Internal(String),
+    WriteConflict,
 }
 
 impl From<std::num::ParseIntError> for Error {
@@ -34,3 +35,4 @@ impl From<Box<ErrorKind>> for Error {
         Error::Internal(value.to_string())
     }
 }
+
