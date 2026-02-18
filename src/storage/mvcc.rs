@@ -67,7 +67,7 @@ pub enum MvccKey {
     /// Next available transaction version number
     NextVersion,
     /// Active transaction version
-    TxnAcvtive(Version),
+    TxnActive(Version),
     /// Write set entry: tracks which keys were modified by a transaction (for rollback)
     TxnWrite(Version, Vec<u8>),
     /// Versioned key: associates a key with its version for correct data retrieval
@@ -77,7 +77,7 @@ pub enum MvccKey {
 /*
 Bincode encoding format for enum variants:
   NextVersion:    0
-  TxnAcvtive:     1-100, 1-101, 1-102
+  TxnActive:      1-100, 1-101, 1-102
   TxnWrite:       2-version-key
   Version:        3-key1-101, 3-key2-101
 */
@@ -101,7 +101,8 @@ impl MvccKey {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum MvccKeyPrefix {
     NextVersion,
-    TxnAcvtive,
+    TxnActive,
+    TxnWrite(Version),
 }
 
 impl MvccKeyPrefix {
@@ -131,7 +132,7 @@ impl<E: Engine> MvccTransaction<E> {
         let active_versions = Self::scan_active(&mut engine)?;
 
         // Add this transaction to active list (value is empty)
-        engine.set(MvccKey::TxnAcvtive(next_version).encode(), vec![])?;
+        engine.set(MvccKey::TxnActive(next_version).encode(), vec![])?;
 
         Ok(Self {
             engine: eng.clone(),
@@ -142,12 +143,62 @@ impl<E: Engine> MvccTransaction<E> {
         })
     }
 
+    /// Commits the transaction
+    ///
+    /// Cleans up TxnWrite entries and removes from active list.
+    /// Does not delete the actual data (unlike rollback).
     pub fn commit(&self) -> Result<()> {
-        Ok(())
+        let mut engine = self.engine.lock()?;
+
+        let mut delete_keys = Vec::new();
+        // Find all TxnWrite entries for this transaction
+        let mut iter = engine.scan_prefix(MvccKeyPrefix::TxnWrite(self.state.version).encode());
+        while let Some((key, _)) = iter.next().transpose()? {
+            delete_keys.push(key);
+        }
+        drop(iter);
+
+        for key in delete_keys.into_iter() {
+            engine.delete(key)?;
+        }
+
+        // Remove from active transaction list
+        engine.delete(MvccKey::TxnActive(self.state.version).encode())
     }
 
+    /// Rolls back the transaction
+    ///
+    /// Deletes TxnWrite entries, Version entries (actual data), and TxnActive entry.
     pub fn rollback(&self) -> Result<()> {
-        Ok(())
+        let mut engine = self.engine.lock()?;
+        let mut delete_keys = Vec::new();
+
+        // Find all TxnWrite entries for this transaction
+        let mut iter = engine.scan_prefix(MvccKeyPrefix::TxnWrite(self.state.version).encode());
+        while let Some((key, _)) = iter.next().transpose()? {
+            // Decode to get the raw key, then add Version entry to delete list
+            match MvccKey::decode(key.clone())? {
+                MvccKey::TxnWrite(_, raw_key) => {
+                    delete_keys.push(MvccKey::Version(raw_key, self.state.version).encode());
+                }
+                _ => {
+                    return Err(Error::Internal(format!(
+                        "unexpected key: {:?}",
+                        String::from_utf8(key)
+                    )))
+                }
+            }
+            delete_keys.push(key);
+        }
+        // Drop iterator to release borrow before using engine again
+        drop(iter);
+
+        for key in delete_keys.into_iter() {
+            engine.delete(key)?;
+        }
+
+        // Remove from active transaction list
+        engine.delete(MvccKey::TxnActive(self.state.version).encode())
     }
 
     pub fn set(&self, key: Vec<u8>, value: Vec<u8>) -> Result<()> {
@@ -158,9 +209,34 @@ impl<E: Engine> MvccTransaction<E> {
         self.write_inner(key, None)
     }
 
+    /// Gets the value for a key, respecting MVCC visibility
+    ///
+    /// Scans versions from newest to oldest and returns the first visible version.
     pub fn get(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>> {
-        let mut eng = self.engine.lock()?;
-        eng.get(key)
+        let mut engine = self.engine.lock()?;
+
+        // Scan version range [0, current_version]
+        let from = MvccKey::Version(key.clone(), 0).encode();
+        let to = MvccKey::Version(key.clone(), self.state.version).encode();
+        let mut iter = engine.scan(from..=to).rev();
+
+        // Reverse scan to find the newest visible version
+        while let Some((key, value)) = iter.next().transpose()? {
+            match MvccKey::decode(key.clone())? {
+                MvccKey::Version(_, version) => {
+                    if self.state.is_visible(version) {
+                        return Ok(bincode::deserialize(&value)?);
+                    }
+                }
+                _ => {
+                    return Err(Error::Internal(format!(
+                        "unexpected key: {:?}",
+                        String::from_utf8(key)
+                    )))
+                }
+            }
+        }
+        Ok(None)
     }
 
     pub fn scan_prefix(&self, prefix: Vec<u8>) -> Result<Vec<ScanResult>> {
@@ -231,15 +307,15 @@ impl<E: Engine> MvccTransaction<E> {
 
     /// Scans for active transaction versions using prefix scan
     ///
-    /// Since TxnAcvtive keys are encoded with prefix 1, we can find all
-    /// active transactions by scanning with the TxnAcvtive prefix.
+    /// Since TxnActive keys are encoded with prefix 1, we can find all
+    /// active transactions by scanning with the TxnActive prefix.
     fn scan_active(engine: &mut MutexGuard<E>) -> Result<HashSet<Version>> {
         let mut active_versions = HashSet::new();
-        let mut iter = engine.scan_prefix(MvccKeyPrefix::TxnAcvtive.encode());
+        let mut iter = engine.scan_prefix(MvccKeyPrefix::TxnActive.encode());
 
         while let Some((key, _)) = iter.next().transpose()? {
             match MvccKey::decode(key.clone())? {
-                MvccKey::TxnAcvtive(version) => {
+                MvccKey::TxnActive(version) => {
                     active_versions.insert(version);
                 }
                 _ => {
