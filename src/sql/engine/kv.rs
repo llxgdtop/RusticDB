@@ -6,7 +6,7 @@ use crate::{
         schema::Table,
         types::{Row, Value},
     },
-    storage::{self, engine::Engine as StorageEngine},
+    storage::{self, engine::Engine as StorageEngine, keycode::serialize_key},
 };
 
 use super::{Engine, Transaction};
@@ -53,11 +53,11 @@ impl<E: StorageEngine> KVTransaction<E> {
 
 impl<E: StorageEngine> Transaction for KVTransaction<E> {
     fn commit(&self) -> Result<()> {
-        Ok(())
+        self.txn.commit()
     }
 
     fn rollback(&self) -> Result<()> {
-        Ok(())
+        self.txn.rollback()
     }
 
     fn create_row(&mut self, table_name: String, row: Row) -> Result<()> {
@@ -83,19 +83,30 @@ impl<E: StorageEngine> Transaction for KVTransaction<E> {
             }
         }
 
-        // Store row data: key = table_name + first_column_value, value = serialized row
-        // TODO: Use proper primary key instead of first column
-        let id = Key::Row(table_name.clone(), row[0].clone());
+        // 找到表中的主键作为一行数据的唯一标识
+        let pk = table.get_primary_key(&row)?;
+        // 查看主键对应的数据是否已经存在了
+        let id = Key::Row(table_name.clone(), pk.clone()).encode()?;
+        // 校验主键唯一性
+        if self.txn.get(id.clone())?.is_some() {
+            return Err(Error::Internal(format!(
+                "Duplicate data for primary key {} in table {}",
+                pk, table_name
+            )));
+        }
+
+        // 存放数据
         let value = bincode::serialize(&row)?;
-        self.txn.set(bincode::serialize(&id)?, value)?;
+        self.txn.set(id, value)?;
+
 
         Ok(())
     }
 
     fn scan_table(&self, table_name: String) -> Result<Vec<Row>> {
         // Use prefix scan to find all rows in the table
-        let prefix = KeyPrefix::Row(table_name.clone());
-        let results = self.txn.scan_prefix(bincode::serialize(&prefix)?)?;
+        let prefix = KeyPrefix::Row(table_name.clone()).encode()?;
+        let results = self.txn.scan_prefix(prefix)?;
 
         let mut rows = Vec::new();
         for result in results {
@@ -115,26 +126,21 @@ impl<E: StorageEngine> Transaction for KVTransaction<E> {
         }
 
         // Validate table has at least one column
-        if table.columns.is_empty() {
-            return Err(Error::Internal(format!(
-                "table {} has no columns",
-                table.name
-            )));
-        }
+        table.validate()?;
 
         // Store table schema: key = table name, value = serialized table schema
-        let key = Key::Table(table.name.clone());
-        let value = bincode::serialize(&table)?;
-        self.txn.set(bincode::serialize(&key)?, value)?;
+        let key = Key::Table(table.name.clone()).encode()?;
+        let value = bincode::serialize(&table)?; 
+        self.txn.set(key, value)?;
 
         Ok(())
     }
 
     fn get_table(&self, table_name: String) -> Result<Option<Table>> {
-        let key = Key::Table(table_name);
+        let key = Key::Table(table_name).encode()?;
         Ok(self
             .txn
-            .get(bincode::serialize(&key)?)?
+            .get(key)?
             .map(|v| bincode::deserialize(&v))
             .transpose()?)
     }
@@ -147,6 +153,14 @@ enum Key {
     Row(String, Value),
 }
 
+// 与之前的道理相同，String是变长的
+// 为了前缀能匹配的上，所以用自己实现的序列化方法
+impl Key {
+    pub fn encode(&self) -> Result<Vec<u8>> {
+        serialize_key(self)
+    }
+}
+
 /// Key prefix types for prefix scanning
 ///
 /// In bincode, enums are serialized as [variant_index][variant_data...].
@@ -155,6 +169,12 @@ enum Key {
 enum KeyPrefix {
     Table,
     Row(String),
+}
+
+impl KeyPrefix {
+    pub fn encode(&self) -> Result<Vec<u8>> {
+        serialize_key(self)
+    }
 }
 
 #[cfg(test)]
@@ -168,13 +188,15 @@ mod tests {
         let kvengine = KVEngine::new(MemoryEngine::new());
         let mut s = kvengine.session()?;
 
-        s.execute("create table t1 (a int, b text default 'vv', c integer default 100);")?;
+        s.execute(
+            "create table t1 (a int primary key, b text default 'vv', c integer default 100);",
+        )?;
         s.execute("insert into t1 values(1, 'a', 1);")?;
         s.execute("insert into t1 values(2, 'b');")?;
         s.execute("insert into t1(c, a) values(200, 3);")?;
 
-        let v1 = s.execute("select * from t1;")?;
-        println!("{:?}", v1);
+        s.execute("select * from t1;")?;
+
         Ok(())
     }
 }

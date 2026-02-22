@@ -27,6 +27,7 @@ pub struct Column {
     pub datatype: DataType,
     pub nullable: Option<bool>,
     pub default: Option<Expression>,
+    pub primary_key: bool,
 }
 
 /// Expression definition (currently only constants)

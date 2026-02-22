@@ -80,6 +80,7 @@ impl<'a> Parser<'a> {
             },
             nullable: None,
             default: None,
+            primary_key: false,
         };
 
         // Parse column constraints (NULL, NOT NULL, DEFAULT)
@@ -91,6 +92,10 @@ impl<'a> Parser<'a> {
                     column.nullable = Some(false);
                 }
                 Keyword::Default => column.default = Some(self.parse_expression()?),
+                Keyword::Primary => {
+                    self.next_expect(Token::Keyword(Keyword::Key))?;
+                    column.primary_key = true;
+                }
                 k => return Err(Error::Parse(format!("[Parser] Unexpected keyword {}", k))),
             }
         }
