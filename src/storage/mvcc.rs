@@ -62,16 +62,16 @@ impl TransactionState {
 /// MVCC key types for storage operations
 ///
 /// These special keys are used to store MVCC metadata in the storage engine.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum MvccKey {
     /// Next available transaction version number
     NextVersion,
     /// Active transaction version
     TxnActive(Version),
     /// Write set entry: tracks which keys were modified by a transaction (for rollback)
-    TxnWrite(Version, Vec<u8>),
+    TxnWrite(Version, #[serde(with = "serde_bytes")] Vec<u8>), 
     /// Versioned key: associates a key with its version for correct data retrieval
-    Version(Vec<u8>, Version),
+    Version(#[serde(with = "serde_bytes")] Vec<u8>, Version),
 }
 
 /*
@@ -103,6 +103,7 @@ pub enum MvccKeyPrefix {
     NextVersion,
     TxnActive,
     TxnWrite(Version),
+    Version(#[serde(with = "serde_bytes")] Vec<u8>),
 }
 
 impl MvccKeyPrefix {
