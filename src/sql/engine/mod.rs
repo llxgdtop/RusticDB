@@ -28,6 +28,8 @@ pub trait Transaction {
     fn create_row(&mut self, table_name: String, row: Row) -> Result<()>;
     /// Updates a row, id is the primary key
     fn update_row(&mut self, table: &Table, id: &Value, row: Row) -> Result<()>;
+    /// Deletes a row by primary key
+    fn delete_row(&mut self, table: &Table, id: &Value) -> Result<()>;
     /// Scans table with optional filter
     fn scan_table(
         &self,

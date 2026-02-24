@@ -150,3 +150,35 @@ impl<T: Transaction> Executor<T> for Update<T> {
         Ok(ResultSet::Update { count })
     }
 }
+
+/// DELETE executor (similar to UPDATE)
+pub struct Delete<T: Transaction> {
+    table_name: String,
+    source: Box<dyn Executor<T>>,
+}
+
+impl<T: Transaction> Delete<T> {
+    pub fn new(table_name: String, source: Box<dyn Executor<T>>) -> Box<Self> {
+        Box::new(Self { table_name, source })
+    }
+}
+
+impl<T: Transaction> Executor<T> for Delete<T> {
+    fn execute(self: Box<Self>, txn: &mut T) -> Result<ResultSet> {
+        match self.source.execute(txn)? {
+            ResultSet::Scan { columns: _, rows } => {
+                let mut count = 0;
+                let table = txn.must_get_table(self.table_name)?;
+                for row in rows {
+                    // Extract primary key for deletion
+                    let pk = table.get_primary_key(&row)?;
+                    txn.delete_row(&table, &pk)?;
+                    count += 1;
+                }
+
+                Ok(ResultSet::Delete { count })
+            }
+            _ => return Err(Error::Internal("Unexpected result set".into())),
+        }
+    }
+}

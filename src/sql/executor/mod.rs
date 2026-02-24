@@ -1,4 +1,4 @@
-use crate::{error::Result, sql::{engine::Transaction, executor::{mutation::{Insert, Update}, query::Scan, schema::CreateTable}, plan::Node, types::Row}};
+use crate::{error::Result, sql::{engine::Transaction, executor::{mutation::{Delete, Insert, Update}, query::Scan, schema::CreateTable}, plan::Node, types::Row}};
 
 mod schema;
 mod mutation;
@@ -29,6 +29,7 @@ impl<T: Transaction + 'static> dyn Executor<T> {
                 // Recursively build inner node (Scan node from planner.rs)
                 Self::build(*source),
                 columns),
+            Node::Delete { table_name, source } => Delete::new(table_name, Self::build(*source)),
         }
     }
 }
@@ -39,6 +40,8 @@ pub enum ResultSet {
     CreateTable { table_name: String },
     Insert { count: usize },
     Scan { columns: Vec<String>, rows: Vec<Row> },
-    /// Number of rows updated
     Update { count: usize },
+    Delete {
+        count: usize,
+    },
 }

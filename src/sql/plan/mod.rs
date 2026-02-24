@@ -31,6 +31,12 @@ pub enum Node {
         source: Box<Node>,
         columns: BTreeMap<String, Expression>,
     },
+
+    /// DELETE execution node
+    Delete {
+        table_name: String,
+        source: Box<Node>,
+    },
 }
 
 /// Execution plan wrapper

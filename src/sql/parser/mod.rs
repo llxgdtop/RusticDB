@@ -38,6 +38,7 @@ impl<'a> Parser<'a> {
             Some(Token::Keyword(Keyword::Select)) => self.parse_select(),
             Some(Token::Keyword(Keyword::Insert)) => self.parse_insert(),
             Some(Token::Keyword(Keyword::Update)) => self.parse_update(),
+            Some(Token::Keyword(Keyword::Delete)) => self.parse_delete(),
             Some(t) => Err(Error::Parse(format!("[Parser] Unexpected token {}", t))),
             None => Err(Error::Parse(format!("[Parser] Unexpected end of input"))),
         }
@@ -201,6 +202,18 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parses DELETE statement
+    fn parse_delete(&mut self) -> Result<ast::Statement> {
+        self.next_expect(Token::Keyword(Keyword::Delete))?;
+        self.next_expect(Token::Keyword(Keyword::From))?;
+        let table_name = self.next_ident()?;
+
+        Ok(ast::Statement::Delete {
+            table_name,
+            where_clause: self.parse_where_clause()?,
+        })
+    }
+    
     /// Parses an expression (currently only constants)
     fn parse_expression(&mut self) -> Result<ast::Expression> {
         Ok(match self.next()? {

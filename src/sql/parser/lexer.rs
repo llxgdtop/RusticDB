@@ -24,7 +24,6 @@ pub enum Token {
     Plus,
     Minus,
     Slash,
-    /// Equal sign
     Equal,
 }
 
@@ -70,6 +69,8 @@ pub enum Keyword {
     Insert,
     Into,
     Values,
+    Update,
+    Delete,
     // Literal keywords
     True,
     False,
@@ -79,7 +80,6 @@ pub enum Keyword {
     // Constraint keywords
     Primary,
     Key,
-    Update,
     Set,
     Where,
 }
@@ -114,6 +114,7 @@ impl Keyword {
             "UPDATE" => Keyword::Update,
             "SET" => Keyword::Set,
             "WHERE" => Keyword::Where,
+            "DELETE" => Keyword::Delete,
             _ => return None,
         })
     }
@@ -147,6 +148,7 @@ impl Keyword {
             Keyword::Update => "UPDATE",
             Keyword::Set => "SET",
             Keyword::Where => "WHERE",
+            Keyword::Delete => "DELETE",
         }
     }
 }

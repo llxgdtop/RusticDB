@@ -53,3 +53,11 @@ SET column_name = expr [, ...]
 
 where condition is: `column_name = expr`
 ```
+
+### 5. Delete
+```sql
+DELETE FROM table_name
+[WHERE condition];
+
+where condition is: `column_name = expr`
+```

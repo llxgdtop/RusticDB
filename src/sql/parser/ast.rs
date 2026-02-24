@@ -25,6 +25,10 @@ pub enum Statement {
         columns: BTreeMap<String, Expression>,
         where_clause: Option<(String, Expression)>,
     },
+    Delete {
+        table_name: String,
+        where_clause: Option<(String, Expression)>,
+    },
 }
 
 /// Column definition for CREATE TABLE statements
