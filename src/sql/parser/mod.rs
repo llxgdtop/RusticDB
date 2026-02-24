@@ -1,3 +1,10 @@
+//! SQL Parser - Converts SQL text into Abstract Syntax Tree (AST)
+//!
+//! This module provides:
+//! - Lexer: tokenizes SQL text into tokens
+//! - Parser: parses tokens into AST nodes
+//! - AST: abstract syntax tree definitions
+
 use std::collections::BTreeMap;
 use std::iter::Peekable;
 use ast::Column;

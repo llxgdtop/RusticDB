@@ -1,3 +1,8 @@
+//! Query execution plan module
+//!
+//! Converts AST statements into executable plan nodes.
+//! Each node represents an operation (CREATE TABLE, INSERT, SELECT, UPDATE, DELETE).
+
 use std::collections::BTreeMap;
 
 use crate::{error::Result, sql::{engine::Transaction, executor::{Executor, ResultSet}, parser::ast::{self, Expression}, plan::planner::Planner, schema::Table}};

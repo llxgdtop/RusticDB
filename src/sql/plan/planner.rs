@@ -1,6 +1,6 @@
 use crate::sql::{parser::ast, plan::{Node, Plan}, schema::{self, Table}, types::Value};
 
-/// Converts AST statements into execution plan nodes
+/// Query planner - converts AST into execution plan nodes
 pub struct Planner;
 
 impl Planner {
@@ -13,11 +13,7 @@ impl Planner {
         Plan(self.build_statement(stmt))
     }
 
-    /// Converts an AST statement into an execution node
-    ///
-    /// Separated from `build` to allow for future optimizations,
-    /// logging, or performance statistics without changing the build API.
-    pub fn build_statement(&self, stmt: ast::Statement) -> Node {
+    fn build_statement(&self, stmt: ast::Statement) -> Node {
         match stmt {
             ast::Statement::CreateTable { name, columns } => Node::CreateTable {
                 schema: Table {

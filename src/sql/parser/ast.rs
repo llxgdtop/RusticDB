@@ -20,11 +20,13 @@ pub enum Statement {
     Select {
         table_name: String,
     },
+    /// UPDATE statement
     Update {
         table_name: String,
         columns: BTreeMap<String, Expression>,
         where_clause: Option<(String, Expression)>,
     },
+    /// DELETE statement
     Delete {
         table_name: String,
         where_clause: Option<(String, Expression)>,

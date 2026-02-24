@@ -3,13 +3,17 @@ use std::{array::TryFromSliceError, fmt::Display, string::FromUtf8Error, sync::P
 use bincode::ErrorKind;
 use serde::{de, ser};
 
-// Custom Result type
+/// Custom Result type for RustDB operations
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Error types for RustDB
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
+    /// SQL parsing error
     Parse(String),
+    /// Internal error (storage, serialization, etc.)
     Internal(String),
+    /// MVCC write conflict
     WriteConflict,
 }
 

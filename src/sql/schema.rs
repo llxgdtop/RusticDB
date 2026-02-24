@@ -12,7 +12,6 @@ pub struct Table {
 impl Table {
     /// Validates table schema
     pub fn validate(&self) -> Result<()> {
-        // Check if table has columns
         if self.columns.is_empty() {
             return Err(Error::Internal(format!(
                 "table {} has no columns",
@@ -20,9 +19,8 @@ impl Table {
             )));
         }
 
-        // Validate exactly one primary key exists
         match self.columns.iter().filter(|c| c.primary_key).count() {
-            1 => {} // Exactly one primary key is expected
+            1 => {}
             0 => {
                 return Err(Error::Internal(format!(
                     "No primary key for table {}",
@@ -42,7 +40,6 @@ impl Table {
 
     /// Extracts primary key value from a row
     pub fn get_primary_key(&self, row: &Row) -> Result<Value> {
-        // Column order in CREATE TABLE matches the order in KV storage
         let pos = self
             .columns
             .iter()

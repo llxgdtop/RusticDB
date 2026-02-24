@@ -9,7 +9,9 @@ pub trait Executor<T: Transaction> {
     fn execute(self: Box<Self>, txn: &mut T) -> Result<ResultSet>;
 }
 
-// 'static bound required for Update's recursive call with trait objects
+/// Builds an executor from a plan node
+///
+/// The `'static` bound is required for trait object usage in recursive executor building.
 impl<T: Transaction + 'static> dyn Executor<T> {
     pub fn build(node: Node) -> Box<dyn Executor<T>> {
         match node {

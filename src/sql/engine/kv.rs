@@ -62,7 +62,6 @@ impl<E: StorageEngine> Transaction for KVTransaction<E> {
     fn create_row(&mut self, table_name: String, row: Row) -> Result<()> {
         let table = self.must_get_table(table_name.clone())?;
 
-        // Validate row data types match table schema
         for (i, col) in table.columns.iter().enumerate() {
             match row[i].datatype() {
                 None if col.nullable => {}
@@ -82,10 +81,8 @@ impl<E: StorageEngine> Transaction for KVTransaction<E> {
             }
         }
 
-        // Get primary key as unique identifier for the row
         let pk = table.get_primary_key(&row)?;
         let id = Key::Row(table_name.clone(), pk.clone()).encode()?;
-        // Check primary key uniqueness
         if self.txn.get(id.clone())?.is_some() {
             return Err(Error::Internal(format!(
                 "Duplicate data for primary key {} in table {}",
@@ -93,10 +90,8 @@ impl<E: StorageEngine> Transaction for KVTransaction<E> {
             )));
         }
 
-        // Store the row data
         let value = bincode::serialize(&row)?;
         self.txn.set(id, value)?;
-
 
         Ok(())
     }
@@ -104,7 +99,6 @@ impl<E: StorageEngine> Transaction for KVTransaction<E> {
     /// Updates a row - if primary key changes, delete old data and insert new
     fn update_row(&mut self, table: &Table, id: &Value, row: Row) -> Result<()> {
         let new_pk = table.get_primary_key(&row)?;
-        // If primary key changed, delete the old data
         if *id != new_pk {
             let oldKey = Key::Row(table.name.clone(), id.clone()).encode()?;
             self.txn.delete(oldKey)?;
@@ -127,7 +121,6 @@ impl<E: StorageEngine> Transaction for KVTransaction<E> {
         table_name: String,
         filter: Option<(String, Expression)>,
     ) -> Result<Vec<Row>> {
-        // Use prefix scan to find all rows in the table
         let prefix = KeyPrefix::Row(table_name.clone()).encode()?;
         let table = self.must_get_table(table_name)?;
         let results = self.txn.scan_prefix(prefix)?;
@@ -135,14 +128,12 @@ impl<E: StorageEngine> Transaction for KVTransaction<E> {
         let mut rows = Vec::new();
         for result in results {
             let row: Row = bincode::deserialize(&result.value)?;
-            // Apply filter if present
             if let Some((col, expr)) = &filter {
                 let col_index = table.get_col_index(&col)?;
                 if Value::from_expression(expr.clone()) == row[col_index] {
                     rows.push(row);
                 }
             } else {
-                // No filter, include all rows
                 rows.push(row);
             }
         }
@@ -150,7 +141,6 @@ impl<E: StorageEngine> Transaction for KVTransaction<E> {
     }
 
     fn create_table(&mut self, table: Table) -> Result<()> {
-        // Check if table already exists
         if self.get_table(table.name.clone())?.is_some() {
             return Err(Error::Internal(format!(
                 "table {} already exists",
@@ -158,12 +148,10 @@ impl<E: StorageEngine> Transaction for KVTransaction<E> {
             )));
         }
 
-        // Validate table has at least one column
         table.validate()?;
 
-        // Store table schema: key = table name, value = serialized table schema
         let key = Key::Table(table.name.clone()).encode()?;
-        let value = bincode::serialize(&table)?; 
+        let value = bincode::serialize(&table)?;
         self.txn.set(key, value)?;
 
         Ok(())

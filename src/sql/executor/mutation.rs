@@ -26,9 +26,6 @@ impl Insert {
 }
 
 /// Pads row with default values for unspecified columns
-///
-/// Used when INSERT specifies values without column names.
-/// Fills remaining columns with their default values.
 fn pad_row(table: &Table, row: &Row) -> Result<Row> {
     let mut results = row.clone();
     for column in table.columns.iter().skip(row.len()) {
@@ -44,10 +41,7 @@ fn pad_row(table: &Table, row: &Row) -> Result<Row> {
     Ok(results)
 }
 
-/// Builds a row with values mapped to specified columns
-///
-/// Used when INSERT specifies column names.
-/// Maps input values to columns and fills unspecified columns with defaults.
+/// Maps values to specified columns, fills others with defaults
 fn make_row(table: &Table, columns: &Vec<String>, values: &Row) -> Result<Row> {
     if columns.len() != values.len() {
         return Err(Error::Internal(format!("columns and values num mismatch")));
@@ -91,7 +85,6 @@ impl<T: Transaction> Executor<T> for Insert {
                 make_row(&table, &self.columns, &row)?
             };
 
-            // println!("insert row: {:?}", insert_row);
             txn.create_row(self.table_name.clone(), insert_row)?;
             count += 1;
         }
@@ -124,23 +117,18 @@ impl<T: Transaction> Update<T> {
 impl<T: Transaction> Executor<T> for Update<T> {
     fn execute(self: Box<Self>, txn:&mut T) -> Result<ResultSet> {
         let mut count = 0;
-        // Execute scan to get filtered rows from WHERE clause
         match self.source.execute(txn)? {
             ResultSet::Scan { columns, rows } => {
                 let table = txn.must_get_table(self.table_name)?;
-                // Iterate through all rows to update
                 for row in rows {
                     let mut new_row = row.clone();
-                    // Get primary key for this row (used to check if PK needs updating)
                     let pk = table.get_primary_key(&row)?;
 
-                    // Check each column to see if it needs updating
                     for (i, col) in columns.iter().enumerate() {
                         if let Some(expr) = self.columns.get(col) {
                             new_row[i] = Value::from_expression(expr.clone());
                         }
                     }
-                    // Execute the update
                     txn.update_row(&table, &pk, new_row)?;
                     count += 1;
                 }
@@ -170,7 +158,6 @@ impl<T: Transaction> Executor<T> for Delete<T> {
                 let mut count = 0;
                 let table = txn.must_get_table(self.table_name)?;
                 for row in rows {
-                    // Extract primary key for deletion
                     let pk = table.get_primary_key(&row)?;
                     txn.delete_row(&table, &pk)?;
                     count += 1;

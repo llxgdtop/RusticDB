@@ -152,7 +152,6 @@ impl<E: Engine> MvccTransaction<E> {
         let mut engine = self.engine.lock()?;
 
         let mut delete_keys = Vec::new();
-        // Find all TxnWrite entries for this transaction
         let mut iter = engine.scan_prefix(MvccKeyPrefix::TxnWrite(self.state.version).encode()?);
         while let Some((key, _)) = iter.next().transpose()? {
             delete_keys.push(key);
@@ -163,7 +162,6 @@ impl<E: Engine> MvccTransaction<E> {
             engine.delete(key)?;
         }
 
-        // Remove from active transaction list
         engine.delete(MvccKey::TxnActive(self.state.version).encode()?)
     }
 
@@ -174,10 +172,8 @@ impl<E: Engine> MvccTransaction<E> {
         let mut engine = self.engine.lock()?;
         let mut delete_keys = Vec::new();
 
-        // Find all TxnWrite entries for this transaction
         let mut iter = engine.scan_prefix(MvccKeyPrefix::TxnWrite(self.state.version).encode()?);
         while let Some((key, _)) = iter.next().transpose()? {
-            // Decode to get the raw key, then add Version entry to delete list
             match MvccKey::decode(key.clone())? {
                 MvccKey::TxnWrite(_, raw_key) => {
                     delete_keys.push(MvccKey::Version(raw_key, self.state.version).encode()?);
@@ -191,14 +187,12 @@ impl<E: Engine> MvccTransaction<E> {
             }
             delete_keys.push(key);
         }
-        // Drop iterator to release borrow before using engine again
         drop(iter);
 
         for key in delete_keys.into_iter() {
             engine.delete(key)?;
         }
 
-        // Remove from active transaction list
         engine.delete(MvccKey::TxnActive(self.state.version).encode()?)
     }
 
@@ -327,7 +321,6 @@ impl<E: Engine> MvccTransaction<E> {
             vec![]
         )?;
 
-        // Write the actual versioned data
         engine.set(
             MvccKey::Version(key.clone(), self.state.version).encode()?,
             bincode::serialize(&value)?,

@@ -13,7 +13,6 @@ impl MemoryEngine {
     }
 }
 
-/// Implements storage Engine trait (byte-level operations)
 impl Engine for MemoryEngine {
     type EngineIterator<'a> = MemoryEngineIterator<'a>;
 
