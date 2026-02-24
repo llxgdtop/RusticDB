@@ -54,6 +54,7 @@ impl Table {
         Ok(row[pos].clone())
     }
 
+    // 获取指定列名在表中是第几列
     pub fn get_col_index(&self, col_name: &str) -> Result<usize> {
         self.columns
             .iter()

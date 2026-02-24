@@ -48,7 +48,22 @@ impl Planner {
                 columns: columns.unwrap_or_default(),
                 values,
             },
-            ast::Statement::Select { table_name } => Node::Scan { table_name },
+            ast::Statement::Select { table_name } => Node::Scan { 
+                table_name,
+                filter: None,
+            },
+            ast::Statement::Update {
+                table_name,
+                columns,
+                where_clause,
+            } => Node::Update {
+                table_name: table_name.clone(),
+                source: Box::new(Node::Scan {
+                    table_name,
+                    filter: where_clause,
+                }),
+                columns,
+            },
         }
     }
 }

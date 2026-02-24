@@ -1,4 +1,4 @@
-use crate::error::{Error, Result};
+use crate::{error::{Error, Result}, sql::{parser::ast::Expression, types::Value}};
 
 use super::{executor::ResultSet, parser::Parser, plan::Plan, schema::Table, types::Row};
 
@@ -26,7 +26,14 @@ pub trait Transaction {
     fn rollback(&self) -> Result<()>;
 
     fn create_row(&mut self, table_name: String, row: Row) -> Result<()>;
-    fn scan_table(&self, table_name: String) -> Result<Vec<Row>>;
+    // 更新行，id即主键
+    fn update_row(&mut self, table: &Table, id: &Value, row: Row) -> Result<()>;
+    // 扫描表
+    fn scan_table(
+        &self,
+        table_name: String,
+        filter: Option<(String, Expression)>,
+    ) -> Result<Vec<Row>>;
 
     // DDL operations
     fn create_table(&mut self, table: Table) -> Result<()>;
@@ -46,7 +53,7 @@ pub struct Session<E: Engine> {
     engine: E,
 }
 
-impl<E: Engine> Session<E> {
+impl<E: Engine + 'static> Session<E> {
     /// Executes a SQL statement
     pub fn execute(&mut self, sql: &str) -> Result<ResultSet> {
         match Parser::new(sql).parse()? {

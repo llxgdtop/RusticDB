@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::{error::{Error, Result}, sql::{engine::Transaction, executor::ResultSet, parser::ast::Expression, schema::Table, types::{Row, Value}}};
 
@@ -91,10 +91,66 @@ impl<T: Transaction> Executor<T> for Insert {
                 make_row(&table, &self.columns, &row)?
             };
 
-            println!("insert row: {:?}", insert_row);
+            // println!("insert row: {:?}", insert_row);
             txn.create_row(self.table_name.clone(), insert_row)?;
             count += 1;
         }
         Ok(ResultSet::Insert { count })
+    }
+}
+
+// Update 执行器
+pub struct Update<T: Transaction> {
+    table_name: String,
+    // 由于要有一个扫描执行器，所以要用trait对象，所以也和mod.rs一样加一个范型参数
+    source: Box<dyn Executor<T>>, 
+    columns: BTreeMap<String, Expression>,
+}
+
+impl<T: Transaction> Update<T> {
+    pub fn new(
+        table_name: String,
+        source: Box<dyn Executor<T>>,
+        columns: BTreeMap<String, Expression>,
+    ) -> Box<Self> {
+        Box::new(Self {
+            table_name,
+            source,
+            columns,
+        })
+    }
+}
+
+impl<T: Transaction> Executor<T> for Update<T> {
+    fn execute(self: Box<Self>, txn:&mut T) -> Result<ResultSet> {
+        let mut count = 0;
+        // 执行扫描操作，获取扫描结果即一行行经过where筛选的数据
+        match self.source.execute(txn)? {
+            // 这些数据是每一个列名以及对应的行的值
+            ResultSet::Scan { columns, rows } => {
+                let table = txn.must_get_table(self.table_name)?;
+                // 遍历所有需要更新的行
+                for row in rows {
+                    let mut new_row = row.clone();
+                    // 获取此行的主键值，用于update_row里面判断主键是否需要更新
+                    let pk = table.get_primary_key(&row)?;
+
+                    // 针对每一行，看每一列是否在需要更新的columns列表当中
+                    // columns.iter()这个是扫描结果的columns，而self.columns是Update执行器结构体的字段
+                    // 就是遍历前者的每一列，看它是否出现在BTreeMap当中，如果有就是需要更新
+                    for (i, col) in columns.iter().enumerate() {
+                        if let Some(expr) = self.columns.get(col) {
+                            new_row[i] = Value::from_expression(expr.clone());
+                        }
+                    }
+                    // 执行更新操作
+                    txn.update_row(&table, &pk, new_row)?;
+                    count += 1;
+                }
+            },
+            // 只想获取扫描的结果，别的结果就报错
+            _ => return Err(Error::Internal("Unexpected result set".into())),
+        }
+        Ok(ResultSet::Update { count })
     }
 }

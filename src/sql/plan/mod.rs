@@ -1,4 +1,6 @@
-use crate::{error::Result, sql::{engine::Transaction, executor::{Executor, ResultSet}, parser::ast, plan::planner::Planner, schema::Table}};
+use std::collections::BTreeMap;
+
+use crate::{error::Result, sql::{engine::Transaction, executor::{Executor, ResultSet}, parser::ast::{self, Expression}, plan::planner::Planner, schema::Table}};
 
 mod planner;
 
@@ -18,6 +20,16 @@ pub enum Node {
     /// Table scan execution node
     Scan {
         table_name: String,
+        filter: Option<(String, Expression)>, // 可能没有where条件
+    },
+
+    // 更新节点
+    Update {
+        table_name: String,
+        // 数据来源（比如 WHERE 条件筛选出的行），所以需要一个扫描节点
+        // 但要在运行时才能确定变体，所以用一个Box
+        source: Box<Node>, 
+        columns: BTreeMap<String, Expression>,
     },
 }
 
@@ -31,7 +43,7 @@ impl Plan {
         Planner::new().build(stmt)
     }
 
-    pub fn execute<T: Transaction>(self, txn: &mut T) -> Result<ResultSet> {
+    pub fn execute<T: Transaction + 'static>(self, txn: &mut T) -> Result<ResultSet> {
         <dyn Executor<T>>::build(self.0).execute(txn)
     }
 }
@@ -132,6 +144,7 @@ mod tests {
             p,
             Plan(Node::Scan {
                 table_name: "tbl1".to_string(),
+                filter: None,
             })
         );
 

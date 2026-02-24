@@ -3,8 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::{Error, Result},
     sql::{
-        schema::Table,
-        types::{Row, Value},
+        parser::ast::Expression, schema::Table, types::{Row, Value}
     },
     storage::{self, engine::Engine as StorageEngine, keycode::serialize_key},
 };
@@ -103,15 +102,49 @@ impl<E: StorageEngine> Transaction for KVTransaction<E> {
         Ok(())
     }
 
-    fn scan_table(&self, table_name: String) -> Result<Vec<Row>> {
-        // Use prefix scan to find all rows in the table
-        let prefix = KeyPrefix::Row(table_name.clone()).encode()?;
-        let results = self.txn.scan_prefix(prefix)?;
+    // 更新行
+    // 如果有主键更新，删除原来的数据，新增一条新的数据
+    // 否则就 table_name + primary key => 更新数据
+    fn update_row(&mut self, table: &Table, id: &Value, row: Row) -> Result<()> {
+        let new_pk = table.get_primary_key(&row)?;
+        // 如果更新了主键，则删掉原有数据
+        if *id != new_pk {
+            let oldKey = Key::Row(table.name.clone(), id.clone()).encode()?;
+            self.txn.delete(oldKey)?;
+        }
+        let key = Key::Row(table.name.clone(), new_pk.clone()).encode()?;
+        let value = bincode::serialize(&row)?;
+        self.txn.set(key, value)?;
 
+        Ok(())
+    }
+
+    fn scan_table(
+        &self,
+        table_name: String,
+        filter: Option<(String, Expression)>,
+    ) -> Result<Vec<Row>> {
+        // 由于要查找表的所有数据，所以就可以用前缀扫描，
+        // 只扫描表名就可以实现需求了，所以就创建一个枚举
+        let prefix = KeyPrefix::Row(table_name.clone()).encode()?;
+        let table = self.must_get_table(table_name)?;
+        let results = self.txn.scan_prefix(prefix)?;
+        // 将Vec<ScanResult>变成Vec<Row>格式
         let mut rows = Vec::new();
         for result in results {
-            let row: Row = bincode::deserialize(&result.value)?;
-            rows.push(row);
+            // 过滤数据
+            let row: Row = bincode::deserialize(&result.value)?; // ScanResult由key和value组成，这里要的是value
+            if let Some((col, expr)) = &filter {
+                // 查看要筛选的列在表中是第几列
+                let col_index = table.get_col_index(&col)?;
+                // 如果表达式值相同，则说明是筛选结果
+                if Value::from_expression(expr.clone()) == row[col_index] {
+                    rows.push(row);
+                }
+            } else {
+                // 说明不筛选，全要
+                rows.push(row);
+            }
         }
         Ok(rows)
     }
@@ -149,8 +182,8 @@ impl<E: StorageEngine> Transaction for KVTransaction<E> {
 /// Key types for KV storage operations
 #[derive(Debug, Serialize, Deserialize)]
 enum Key {
-    Table(String),
-    Row(String, Value),
+    Table(String),  // 表，参数是表名
+    Row(String, Value), // 行， 参数是表名+主键的值
 }
 
 // 与之前的道理相同，String是变长的
@@ -196,6 +229,34 @@ mod tests {
         s.execute("insert into t1(c, a) values(200, 3);")?;
 
         s.execute("select * from t1;")?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_update() -> Result<()> {
+        let kvengine = KVEngine::new(MemoryEngine::new());
+        let mut s = kvengine.session()?;
+
+        s.execute(
+            "create table t1 (a int primary key, b text default 'vv', c integer default 100);",
+        )?;
+        s.execute("insert into t1 values(1, 'a', 1);")?;
+        s.execute("insert into t1 values(2, 'b', 2);")?;
+        s.execute("insert into t1 values(3, 'c', 3);")?;
+
+        let v = s.execute("update t1 set b = 'aa' where a = 1;")?;
+        let v = s.execute("update t1 set a = 33 where a = 3;")?;
+        println!("{:?}", v);
+
+        match s.execute("select * from t1;")? {
+            crate::sql::executor::ResultSet::Scan { columns, rows } => {
+                for row in rows {
+                    println!("{:?}", row);
+                }
+            }
+            _ => unreachable!(),
+        }
 
         Ok(())
     }

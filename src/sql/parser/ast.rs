@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::sql::types::DataType;
 
 /// Abstract Syntax Tree (AST) node definitions for SQL statements
@@ -18,6 +20,11 @@ pub enum Statement {
     Select {
         table_name: String,
     },
+    Update {
+        table_name: String,
+        columns: BTreeMap<String, Expression>,
+        where_clause: Option<(String, Expression)>,
+    },
 }
 
 /// Column definition for CREATE TABLE statements
@@ -31,7 +38,7 @@ pub struct Column {
 }
 
 /// Expression definition (currently only constants)
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Consts(Consts),
 }
@@ -44,7 +51,7 @@ impl From<Consts> for Expression {
 }
 
 /// Constant values in SQL expressions
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Consts {
     Null,
     Boolean(bool),

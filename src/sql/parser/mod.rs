@@ -1,5 +1,7 @@
+use std::collections::BTreeMap;
 use std::iter::Peekable;
 use ast::Column;
+use crate::sql::parser::ast::Expression;
 use crate::sql::parser::lexer::{Keyword, Lexer, Token};
 use crate::error::{Result, Error};
 use super::types::DataType;
@@ -35,6 +37,7 @@ impl<'a> Parser<'a> {
             Some(Token::Keyword(Keyword::Create)) => self.parse_ddl(),
             Some(Token::Keyword(Keyword::Select)) => self.parse_select(),
             Some(Token::Keyword(Keyword::Insert)) => self.parse_insert(),
+            Some(Token::Keyword(Keyword::Update)) => self.parse_update(),
             Some(t) => Err(Error::Parse(format!("[Parser] Unexpected token {}", t))),
             None => Err(Error::Parse(format!("[Parser] Unexpected end of input"))),
         }
@@ -166,6 +169,39 @@ impl<'a> Parser<'a> {
         })
     }
 
+    // 解析 Update 语句
+    fn parse_update(&mut self) -> Result<ast::Statement> {
+        self.next_expect(Token::Keyword(Keyword::Update))?;
+        // 表名
+        let table_name = self.next_ident()?;
+        self.next_expect(Token::Keyword(Keyword::Set))?;
+
+        // 要更新的列信息
+        let mut columns = BTreeMap::new();
+        loop {
+            let col = self.next_ident()?;
+            self.next_expect(Token::Equal)?;
+            let value = self.parse_expression()?;
+            // 如果重复更新（比如一个update语句里面又有a=1，又有a=2）就是错的
+            if columns.contains_key(&col) {
+                return Err(Error::Parse(format!(
+                    "[parser] Duplicate column {} for update",
+                    col
+                )));
+            }
+            columns.insert(col, value);
+            // 如果没有逗号，列解析完成，跳出
+            if self.next_if_token(Token::Comma).is_none() {
+                break;
+            }
+        }
+        Ok(ast::Statement::Update {
+            table_name,
+            columns,
+            where_clause: self.parse_where_clause()?, // 解析where条件
+        })
+    }
+
     /// Parses an expression (currently only constants)
     fn parse_expression(&mut self) -> Result<ast::Expression> {
         Ok(match self.next()? {
@@ -189,6 +225,17 @@ impl<'a> Parser<'a> {
                 )))
             }
         })
+    }
+
+    // 解析where条件，column_name = expr
+    fn parse_where_clause(&mut self) -> Result<Option<(String, Expression)>> {
+        if self.next_if_token(Token::Keyword(Keyword::Where)).is_none() {
+            return Ok(None) // 说明不限制条件
+        }
+        let col = self.next_ident()?;
+        self.next_expect(Token::Equal)?;
+        let val = self.parse_expression()?;
+        Ok(Some((col, val)))
     }
 
     /// Peeks at the next token
