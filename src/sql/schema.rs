@@ -35,6 +35,31 @@ impl Table {
             }
         }
 
+        // Validate column constraints
+        for col in &self.columns {
+            // Primary key cannot be nullable
+            if col.primary_key && col.nullable {
+                return Err(Error::Internal(format!(
+                    "Primary key {} cannot be nullable in table {}",
+                    col.name, self.name
+                )));
+            }
+            // Validate default value type matches column type
+            if let Some(default_val) = &col.default {
+                match default_val.datatype() {
+                    Some(dt) => {
+                        if dt != col.datatype {
+                            return Err(Error::Internal(format!(
+                                "Default value for column {} mismatch in table {}",
+                                col.name, self.name
+                            )));
+                        }
+                    }
+                    None => {}
+                }
+            }
+        }
+
         Ok(())
     }
 
