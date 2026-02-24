@@ -46,7 +46,7 @@ impl Value {
     }
 }
 
-// 为了打印输出，需要实现这个Trait
+/// Display trait implementation for printing values
 impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

@@ -99,11 +99,11 @@ impl<T: Transaction> Executor<T> for Insert {
     }
 }
 
-// Update 执行器
+/// UPDATE executor
 pub struct Update<T: Transaction> {
     table_name: String,
-    // 由于要有一个扫描执行器，所以要用trait对象，所以也和mod.rs一样加一个范型参数
-    source: Box<dyn Executor<T>>, 
+    /// Source executor (e.g., Scan for WHERE filtering), uses trait object for runtime dispatch
+    source: Box<dyn Executor<T>>,
     columns: BTreeMap<String, Expression>,
 }
 
@@ -124,31 +124,27 @@ impl<T: Transaction> Update<T> {
 impl<T: Transaction> Executor<T> for Update<T> {
     fn execute(self: Box<Self>, txn:&mut T) -> Result<ResultSet> {
         let mut count = 0;
-        // 执行扫描操作，获取扫描结果即一行行经过where筛选的数据
+        // Execute scan to get filtered rows from WHERE clause
         match self.source.execute(txn)? {
-            // 这些数据是每一个列名以及对应的行的值
             ResultSet::Scan { columns, rows } => {
                 let table = txn.must_get_table(self.table_name)?;
-                // 遍历所有需要更新的行
+                // Iterate through all rows to update
                 for row in rows {
                     let mut new_row = row.clone();
-                    // 获取此行的主键值，用于update_row里面判断主键是否需要更新
+                    // Get primary key for this row (used to check if PK needs updating)
                     let pk = table.get_primary_key(&row)?;
 
-                    // 针对每一行，看每一列是否在需要更新的columns列表当中
-                    // columns.iter()这个是扫描结果的columns，而self.columns是Update执行器结构体的字段
-                    // 就是遍历前者的每一列，看它是否出现在BTreeMap当中，如果有就是需要更新
+                    // Check each column to see if it needs updating
                     for (i, col) in columns.iter().enumerate() {
                         if let Some(expr) = self.columns.get(col) {
                             new_row[i] = Value::from_expression(expr.clone());
                         }
                     }
-                    // 执行更新操作
+                    // Execute the update
                     txn.update_row(&table, &pk, new_row)?;
                     count += 1;
                 }
             },
-            // 只想获取扫描的结果，别的结果就报错
             _ => return Err(Error::Internal("Unexpected result set".into())),
         }
         Ok(ResultSet::Update { count })

@@ -26,9 +26,9 @@ pub trait Transaction {
     fn rollback(&self) -> Result<()>;
 
     fn create_row(&mut self, table_name: String, row: Row) -> Result<()>;
-    // 更新行，id即主键
+    /// Updates a row, id is the primary key
     fn update_row(&mut self, table: &Table, id: &Value, row: Row) -> Result<()>;
-    // 扫描表
+    /// Scans table with optional filter
     fn scan_table(
         &self,
         table_name: String,

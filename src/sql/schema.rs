@@ -10,9 +10,9 @@ pub struct Table {
 }
 
 impl Table {
-    // 校验表的有效性
+    /// Validates table schema
     pub fn validate(&self) -> Result<()> {
-        // 校验是否有列信息
+        // Check if table has columns
         if self.columns.is_empty() {
             return Err(Error::Internal(format!(
                 "table {} has no columns",
@@ -20,10 +20,9 @@ impl Table {
             )));
         }
 
-        // 校验是否有主键
-        // 是主键的才不会被过滤出去
+        // Validate exactly one primary key exists
         match self.columns.iter().filter(|c| c.primary_key).count() {
-            1 => {} // 1个主键是符合预期的
+            1 => {} // Exactly one primary key is expected
             0 => {
                 return Err(Error::Internal(format!(
                     "No primary key for table {}",
@@ -41,11 +40,9 @@ impl Table {
         Ok(())
     }
 
-    // 获取主键的值，如下面的1
-    // id age name
-    // 1   10  mike
+    /// Extracts primary key value from a row
     pub fn get_primary_key(&self, row: &Row) -> Result<Value> {
-        // 建表语句与实际插入到kv的顺序是一样的
+        // Column order in CREATE TABLE matches the order in KV storage
         let pos = self
             .columns
             .iter()
@@ -54,7 +51,7 @@ impl Table {
         Ok(row[pos].clone())
     }
 
-    // 获取指定列名在表中是第几列
+    /// Returns the column index for a given column name
     pub fn get_col_index(&self, col_name: &str) -> Result<usize> {
         self.columns
             .iter()
@@ -64,11 +61,12 @@ impl Table {
 }
 
 /// Column schema definition
-#[derive(Debug, PartialEq, Serialize, Deserialize)] 
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Column {
     pub name: String,
     pub datatype: DataType,
     pub nullable: bool,
     pub default: Option<Value>,
-    pub primary_key: bool, // 是否为主键
+    /// Whether this column is the primary key
+    pub primary_key: bool,
 }

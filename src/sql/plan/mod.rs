@@ -20,15 +20,15 @@ pub enum Node {
     /// Table scan execution node
     Scan {
         table_name: String,
-        filter: Option<(String, Expression)>, // 可能没有where条件
+        /// Optional WHERE clause filter
+        filter: Option<(String, Expression)>,
     },
 
-    // 更新节点
+    /// UPDATE execution node
     Update {
         table_name: String,
-        // 数据来源（比如 WHERE 条件筛选出的行），所以需要一个扫描节点
-        // 但要在运行时才能确定变体，所以用一个Box
-        source: Box<Node>, 
+        /// Source node for data (e.g., Scan for WHERE clause filtering)
+        source: Box<Node>,
         columns: BTreeMap<String, Expression>,
     },
 }

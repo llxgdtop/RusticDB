@@ -24,7 +24,7 @@ pub enum Token {
     Plus,
     Minus,
     Slash,
-    // 等号 =
+    /// Equal sign
     Equal,
 }
 

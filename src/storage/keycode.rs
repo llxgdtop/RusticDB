@@ -414,8 +414,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        let bytes = self.next_bytes()?; // 反序列化整个字符串
-        visitor.visit_str(&String::from_utf8(bytes)?) 
+        let bytes = self.next_bytes()?; // Deserialize the entire string
+        visitor.visit_str(&String::from_utf8(bytes)?)
     }
 
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>

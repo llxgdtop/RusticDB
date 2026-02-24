@@ -169,20 +169,19 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // 解析 Update 语句
+    /// Parses UPDATE statement
     fn parse_update(&mut self) -> Result<ast::Statement> {
         self.next_expect(Token::Keyword(Keyword::Update))?;
-        // 表名
         let table_name = self.next_ident()?;
         self.next_expect(Token::Keyword(Keyword::Set))?;
 
-        // 要更新的列信息
+        // Parse column assignments
         let mut columns = BTreeMap::new();
         loop {
             let col = self.next_ident()?;
             self.next_expect(Token::Equal)?;
             let value = self.parse_expression()?;
-            // 如果重复更新（比如一个update语句里面又有a=1，又有a=2）就是错的
+            // Check for duplicate column updates
             if columns.contains_key(&col) {
                 return Err(Error::Parse(format!(
                     "[parser] Duplicate column {} for update",
@@ -190,7 +189,7 @@ impl<'a> Parser<'a> {
                 )));
             }
             columns.insert(col, value);
-            // 如果没有逗号，列解析完成，跳出
+            // If no comma, column parsing is complete
             if self.next_if_token(Token::Comma).is_none() {
                 break;
             }
@@ -198,7 +197,7 @@ impl<'a> Parser<'a> {
         Ok(ast::Statement::Update {
             table_name,
             columns,
-            where_clause: self.parse_where_clause()?, // 解析where条件
+            where_clause: self.parse_where_clause()?,
         })
     }
 
@@ -227,10 +226,10 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // 解析where条件，column_name = expr
+    /// Parses WHERE clause (column_name = expr)
     fn parse_where_clause(&mut self) -> Result<Option<(String, Expression)>> {
         if self.next_if_token(Token::Keyword(Keyword::Where)).is_none() {
-            return Ok(None) // 说明不限制条件
+            return Ok(None) // No WHERE condition
         }
         let col = self.next_ident()?;
         self.next_expect(Token::Equal)?;
