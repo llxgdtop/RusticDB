@@ -71,6 +71,8 @@ pub enum Keyword {
     Values,
     Update,
     Delete,
+    Order,
+    By,
     // Literal keywords
     True,
     False,
@@ -82,6 +84,8 @@ pub enum Keyword {
     Key,
     Set,
     Where,
+    Asc,
+    Desc,
 }
 
 impl Keyword {
@@ -115,6 +119,10 @@ impl Keyword {
             "SET" => Keyword::Set,
             "WHERE" => Keyword::Where,
             "DELETE" => Keyword::Delete,
+            "ORDER" => Keyword::Order,
+            "BY" => Keyword::By,
+            "ASC" => Keyword::Asc,
+            "DESC" => Keyword::Desc,
             _ => return None,
         })
     }
@@ -149,6 +157,10 @@ impl Keyword {
             Keyword::Set => "SET",
             Keyword::Where => "WHERE",
             Keyword::Delete => "DELETE",
+            Keyword::Order => "ORDER",
+            Keyword::By => "BY",
+            Keyword::Asc => "ASC",
+            Keyword::Desc => "DESC",
         }
     }
 }

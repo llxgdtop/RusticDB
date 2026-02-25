@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::{error::Result, sql::{engine::Transaction, executor::{Executor, ResultSet}, parser::ast::{self, Expression}, plan::planner::Planner, schema::Table}};
+use crate::{error::Result, sql::{engine::Transaction, executor::{Executor, ResultSet}, parser::ast::{self, Expression, OrderDirection}, plan::planner::Planner, schema::Table}};
 
 mod planner;
 
@@ -41,6 +41,12 @@ pub enum Node {
     Delete {
         table_name: String,
         source: Box<Node>,
+    },
+
+    /// ORDER BY execution node
+    Order {
+        source: Box<Node>,
+        order_by: Vec<(String, OrderDirection)>,
     },
 }
 

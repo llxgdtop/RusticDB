@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::iter::Peekable;
 use ast::Column;
-use crate::sql::parser::ast::Expression;
+use crate::sql::parser::ast::{Expression, OrderDirection};
 use crate::sql::parser::lexer::{Keyword, Lexer, Token};
 use crate::error::{Result, Error};
 use super::types::DataType;
@@ -121,7 +121,10 @@ impl<'a> Parser<'a> {
         self.next_expect(Token::Keyword(Keyword::From))?;
 
         let table_name = self.next_ident()?;
-        Ok(ast::Statement::Select { table_name })
+        Ok(ast::Statement::Select {
+            table_name,
+            order_by: self.parse_order_clause()?,
+        })
     }
 
     /// Parses INSERT statement
@@ -257,6 +260,36 @@ impl<'a> Parser<'a> {
         Ok(Some((col, val)))
     }
 
+    /// Parses ORDER BY clause
+    fn parse_order_clause(&mut self) -> Result<Vec<(String, OrderDirection)>> {
+        let mut orders = Vec::new();
+        if self.next_if_token(Token::Keyword(Keyword::Order)).is_none() {
+            return Ok(orders);
+        }
+        self.next_expect(Token::Keyword(Keyword::By))?;
+
+        loop {
+            let col = self.next_ident()?;
+            let ord = match self.next_if(|t| {
+                matches!(
+                    t,
+                    Token::Keyword(Keyword::Asc) | Token::Keyword(Keyword::Desc)
+                )
+            }) {
+                Some(Token::Keyword(Keyword::Asc)) => OrderDirection::Asc,
+                Some(Token::Keyword(Keyword::Desc)) => OrderDirection::Desc,
+                _ => OrderDirection::Asc,
+            };
+            orders.push((col, ord));
+
+            if self.next_if_token(Token::Comma).is_none() {
+                break;
+            }
+        }
+
+        Ok(orders)
+    }
+
     /// Peeks at the next token
     fn peek(&mut self) -> Result<Option<Token>> {
         self.lexer.peek().cloned().transpose()
@@ -331,7 +364,7 @@ VALUES ('USB Cable', 9.99, 200);
 
 #[cfg(test)]
 mod tests {
-    use crate::{error::Result, sql::parser::ast};
+    use crate::{error::Result, sql::parser::ast::{self, OrderDirection}};
 
     use super::Parser;
 
@@ -420,7 +453,27 @@ mod tests {
     fn test_parser_select() -> Result<()> {
         let sql = "select * from tbl1;";
         let stmt = Parser::new(sql).parse()?;
-        println!("{:?}", stmt);
+        assert_eq!(
+            stmt,
+            ast::Statement::Select {
+                table_name: "tbl1".to_string(),
+                order_by: vec![],
+            }
+        );
+
+        let sql = "select * from tbl1 order by a, b asc, c desc;";
+        let stmt = Parser::new(sql).parse()?;
+        assert_eq!(
+            stmt,
+            ast::Statement::Select {
+                table_name: "tbl1".to_string(),
+                order_by: vec![
+                    ("a".to_string(), OrderDirection::Asc),
+                    ("b".to_string(), OrderDirection::Asc),
+                    ("c".to_string(), OrderDirection::Desc),
+                ],
+            }
+        );
         Ok(())
     }
 }

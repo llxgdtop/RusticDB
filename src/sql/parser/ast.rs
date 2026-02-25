@@ -19,6 +19,7 @@ pub enum Statement {
     /// SELECT statement
     Select {
         table_name: String,
+        order_by: Vec<(String, OrderDirection)>,
     },
     /// UPDATE statement
     Update {
@@ -31,6 +32,13 @@ pub enum Statement {
         table_name: String,
         where_clause: Option<(String, Expression)>,
     },
+}
+
+/// Sort direction (ascending or descending)
+#[derive(Debug, PartialEq)]
+pub enum OrderDirection {
+    Asc,
+    Desc,
 }
 
 /// Column definition for CREATE TABLE statements

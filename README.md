@@ -42,7 +42,8 @@ values ( expr [, ...] );
 
 ### 3. Select * From
 ```sql
-SELECT * FROM table_name;
+SELECT * FROM table_name
+[order by col_name [asc | desc] [, ...]]
 ```
 
 ### 4. Update
