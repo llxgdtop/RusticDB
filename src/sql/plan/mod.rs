@@ -48,6 +48,18 @@ pub enum Node {
         source: Box<Node>,
         order_by: Vec<(String, OrderDirection)>,
     },
+
+    /// LIMIT execution node
+    Limit {
+        source: Box<Node>,
+        limit: usize,
+    },
+
+    /// OFFSET execution node
+    Offset {
+        source: Box<Node>,
+        offset: usize,
+    },
 }
 
 /// Execution plan wrapper
@@ -56,7 +68,7 @@ pub struct Plan(pub Node);
 
 impl Plan {
     /// Builds an execution plan from an AST statement
-    pub fn build(stmt: ast::Statement) -> Self {
+    pub fn build(stmt: ast::Statement) -> Result<Self> {
         Planner::new().build(stmt)
     }
 
@@ -110,7 +122,7 @@ mod tests {
     fn test_plan_insert() -> Result<()> {
         let sql1 = "insert into tbl1 values (1, 2, 3, 'a', true);";
         let stmt1 = Parser::new(sql1).parse()?;
-        let p1 = Plan::build(stmt1);
+        let p1 = Plan::build(stmt1)?;
         assert_eq!(
             p1,
             Plan(Node::Insert {
@@ -128,7 +140,7 @@ mod tests {
 
         let sql2 = "insert into tbl2 (c1, c2, c3) values (3, 'a', true),(4, 'b', false);";
         let stmt2 = Parser::new(sql2).parse()?;
-        let p2 = Plan::build(stmt2);
+        let p2 = Plan::build(stmt2)?;
         assert_eq!(
             p2,
             Plan(Node::Insert {
@@ -156,7 +168,7 @@ mod tests {
     fn test_plan_select() -> Result<()> {
         let sql = "select * from tbl1;";
         let stmt = Parser::new(sql).parse()?;
-        let p = Plan::build(stmt);
+        let p = Plan::build(stmt)?;
         assert_eq!(
             p,
             Plan(Node::Scan {

@@ -43,7 +43,9 @@ values ( expr [, ...] );
 ### 3. Select * From
 ```sql
 SELECT * FROM table_name
-[order by col_name [asc | desc] [, ...]]
+[ORDER BY col_name [asc | desc] [, ...]]
+[LIMIT count]
+[OFFSET count]
 ```
 
 ### 4. Update

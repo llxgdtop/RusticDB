@@ -1,4 +1,4 @@
-use crate::sql::{parser::ast, plan::{Node, Plan}, schema::{self, Table}, types::Value};
+use crate::{error::{Error, Result}, sql::{parser::ast, plan::{Node, Plan}, schema::{self, Table}, types::Value}};
 
 /// Query planner - converts AST into execution plan nodes
 pub struct Planner;
@@ -9,12 +9,12 @@ impl Planner {
     }
 
     /// Builds an execution plan from an AST statement
-    pub fn build(&mut self, stmt: ast::Statement) -> Plan {
-        Plan(self.build_statement(stmt))
+    pub fn build(&mut self, stmt: ast::Statement) -> Result<Plan> {
+        Ok(Plan(self.build_statement(stmt)?))
     }
 
-    fn build_statement(&self, stmt: ast::Statement) -> Node {
-        match stmt {
+    pub fn build_statement(&self, stmt: ast::Statement) -> Result<Node> {
+        Ok(match stmt {
             ast::Statement::CreateTable { name, columns } => Node::CreateTable {
                 schema: Table {
                     name,
@@ -44,7 +44,12 @@ impl Planner {
                 columns: columns.unwrap_or_default(),
                 values,
             },
-            ast::Statement::Select { table_name, order_by } => {
+            ast::Statement::Select { 
+                table_name, 
+                order_by,
+                limit,
+                offset,
+            } => {
                 let mut node = Node::Scan {
                     table_name,
                     filter: None,
@@ -57,6 +62,28 @@ impl Planner {
                     }
                 }
 
+                // OFFSET - must be processed before LIMIT when both are present
+                if let Some(expr) = offset {
+                    node = Node::Offset {
+                        source: Box::new(node),
+                        offset: match Value::from_expression(expr) {
+                            Value::Integer(i) => i as usize,
+                            _ => return Err(Error::Internal("invalid offset".into())),
+                        },
+                    }
+                }
+
+                // LIMIT
+                if let Some(expr) = limit {
+                    node = Node::Limit {
+                        source: Box::new(node),
+                        limit: match Value::from_expression(expr) {
+                            Value::Integer(i) => i as usize,
+                            _ => return Err(Error::Internal("invalid limit".into())),
+                        },
+                    }
+                }
+                
                 node
             },
             ast::Statement::Update {
@@ -81,6 +108,6 @@ impl Planner {
                     filter: where_clause,
                 }),
             },
-        }
+        })
     }
 }

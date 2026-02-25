@@ -124,6 +124,23 @@ impl<'a> Parser<'a> {
         Ok(ast::Statement::Select {
             table_name,
             order_by: self.parse_order_clause()?,
+            limit: {
+                if self.next_if_token(Token::Keyword(Keyword::Limit)).is_some() {
+                    Some(self.parse_expression()?)
+                } else {
+                    None
+                }
+            },
+            offset: {
+                if self
+                    .next_if_token(Token::Keyword(Keyword::Offset))
+                    .is_some()
+                {
+                    Some(self.parse_expression()?)
+                } else {
+                    None
+                }
+            },
         })
     }
 
@@ -340,31 +357,9 @@ impl<'a> Parser<'a> {
     }
 }
 
-/*
-CREATE TABLE product (
-    is_available BOOLEAN NOT NULL DEFAULT FALSE,
-    stock_quantity INTEGER,
-    product_name VARCHAR(100) NOT NULL DEFAULT '',
-    price FLOAT,
-    category_id INTEGER NOT NULL DEFAULT 0,
-    description TEXT,
-    is_featured BOOLEAN,
-    weight FLOAT NOT NULL DEFAULT 0.0
-);
-
-INSERT INTO product (
-    is_available, stock_quantity, product_name, price, category_id, description, is_featured, weight
-) VALUES (
-    TRUE, 50, 'Wireless Mouse', 29.99, 3, 'Ergonomic wireless mouse with 2.4G receiver', TRUE, 0.15
-);
-
-INSERT INTO product (product_name, price, stock_quantity)
-VALUES ('USB Cable', 9.99, 200);
-*/
-
 #[cfg(test)]
 mod tests {
-    use crate::{error::Result, sql::parser::ast::{self, OrderDirection}};
+    use crate::{error::Result, sql::parser::ast::{self, Consts, Expression, OrderDirection}};
 
     use super::Parser;
 
@@ -451,13 +446,15 @@ mod tests {
 
     #[test]
     fn test_parser_select() -> Result<()> {
-        let sql = "select * from tbl1;";
+        let sql = "select * from tbl1 limit 10 offset 20;";
         let stmt = Parser::new(sql).parse()?;
         assert_eq!(
             stmt,
             ast::Statement::Select {
                 table_name: "tbl1".to_string(),
                 order_by: vec![],
+                limit: Some(Expression::Consts(Consts::Integer(10))),
+                offset: Some(Expression::Consts(Consts::Integer(20))),
             }
         );
 
@@ -472,6 +469,8 @@ mod tests {
                     ("b".to_string(), OrderDirection::Asc),
                     ("c".to_string(), OrderDirection::Desc),
                 ],
+                limit: None,
+                offset: None,
             }
         );
         Ok(())

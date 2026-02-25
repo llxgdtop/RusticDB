@@ -61,7 +61,7 @@ impl<E: Engine + 'static> Session<E> {
         match Parser::new(sql).parse()? {
             stmt => {
                 let mut txn = self.engine.begin()?;
-                match Plan::build(stmt).execute(&mut txn) {
+                match Plan::build(stmt)?.execute(&mut txn) {
                     Ok(result) => {
                         txn.commit()?;
                         Ok(result)

@@ -20,6 +20,8 @@ pub enum Statement {
     Select {
         table_name: String,
         order_by: Vec<(String, OrderDirection)>,
+        limit: Option<Expression>,
+        offset: Option<Expression>,
     },
     /// UPDATE statement
     Update {
