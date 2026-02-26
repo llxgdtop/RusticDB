@@ -54,6 +54,23 @@ impl Planner {
                 // Build scan node from FROM clause (single table or join result)
                 let mut node = self.build_from_item(from)?;
 
+                // aggregate - detect aggregate functions in select expressions
+                let mut has_agg = false;
+                if !select.is_empty() {
+                    for (expr, _) in select.iter() {
+                        if let ast::Expression::Function(_, _) = expr {
+                            has_agg = true;
+                            break;
+                        }
+                    }
+                    if has_agg {
+                        node = Node::Aggregate {
+                            source: Box::new(node),
+                            exprs: select.clone(),
+                        }
+                    }
+                }
+
                 if !order_by.is_empty() {
                     node = Node::Order {
                         source: Box::new(node),
@@ -83,8 +100,14 @@ impl Planner {
                     }
                 }
                 
-                // projection
-                if !select.is_empty() {
+                // projection - current design: projection and aggregate are mutually exclusive
+                //
+                // Note: The following SQL will have issues without GROUP BY support:
+                //   SELECT name, COUNT(*) FROM users GROUP BY name;
+                //   Expected: name | count
+                //   Actual: only count
+                // GROUP BY implementation needed to handle non-aggregate columns properly.
+                if !select.is_empty() && !has_agg {
                     node = Node::Projection {
                         source: Box::new(node),
                         exprs: select,
@@ -130,7 +153,7 @@ impl Planner {
                 join_type ,
                 predicate,
             } =>  {
-                // 如果是 right join，则交换执行节点位置，避免重复编码
+                // For RIGHT JOIN, swap left and right to avoid duplicate code
                 let (left, right) = match join_type {
                     ast::JoinType::Right => (right, left),
                     _ => (left, right),
@@ -138,12 +161,11 @@ impl Planner {
 
                 let outer = match join_type {
                     ast::JoinType::Cross | ast::JoinType::Inner => false,
-                    _ => true, // left和right都是outer join
+                    _ => true, // LEFT and RIGHT joins are both outer joins
                 };
 
                 Node::NestedLoopJoin {
-                    // 与执行器的Self::build(*source)一样，递归去构建执行节点
-                    // 构建到最后肯定为单表
+                    // Recursively build join nodes (base case: single table)
                     left: Box::new(self.build_from_item(*left)?),
                     right: Box::new(self.build_from_item(*right)?),
                     predicate,

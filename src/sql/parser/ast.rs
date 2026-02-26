@@ -18,8 +18,7 @@ pub enum Statement {
     },
     /// SELECT statement
     Select {
-        // Starting from feat: Projection support, column names are also treated as expressions;
-        // the second parameter indicates whether there is an alias.
+        /// Column expressions with optional aliases (e.g., Count(*) as cnt)
         select: Vec<(Expression, Option<String>)>,
         from: FromItem,
         order_by: Vec<(String, OrderDirection)>,
@@ -52,7 +51,8 @@ pub enum FromItem {
         left: Box<FromItem>,
         right: Box<FromItem>,
         join_type: JoinType,
-        predicate: Option<Expression>, // join的on条件，如果是cross join则没有
+        /// Join ON condition (None for CROSS JOIN)
+        predicate: Option<Expression>,
     },
 }
 
@@ -81,12 +81,17 @@ pub struct Column {
     pub primary_key: bool,
 }
 
-// 表达式定义，目前不支持二元表达式，比如1+1
+/// Expression types (column refs, constants, operations, aggregate functions)
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
-    Field(String), // 列名
-    Consts(Consts), // 常量
-    Operation(Operation), // 运算操作
+    /// Column reference
+    Field(String),
+    /// Constant value
+    Consts(Consts),
+    /// Binary operation (e.g., equality comparison)
+    Operation(Operation),
+    /// Aggregate function: Function(name, column) e.g., Function("count", "id")
+    Function(String, String),
 }
 
 /// Implements From trait to convert Consts into Expression
@@ -106,10 +111,9 @@ pub enum Consts {
     String(String),
 }
 
+/// Binary operations
 #[derive(Debug, PartialEq, Clone)]
 pub enum Operation {
-    // 相等。比如说tbl1 join tbl2 on tbl1id = tbl2id
-    // tbl1id就是tbl1的其中一个列，所以这里就用一个Box<Expression>
-    // 当然也可以是其它的运算操作与参数
-    Equal(Box<Expression>, Box<Expression>), 
+    /// Equality comparison (e.g., t1.id = t2.id in JOIN ON clause)
+    Equal(Box<Expression>, Box<Expression>),
 }

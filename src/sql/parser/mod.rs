@@ -241,8 +241,20 @@ impl<'a> Parser<'a> {
     fn parse_expression(&mut self) -> Result<ast::Expression> {
         Ok(match self.next()? {
             Token::Ident(ident) => {
-                // Column reference
-                ast::Expression::Field(ident)
+                // Function call: e.g., count(col_name)
+                //
+                // Why no Lexer changes needed?
+                // - Aggregate function names are identifiers, not keywords
+                // - Parser recognizes functions by Ident + ( pattern
+                // - Lexer changes needed only for new SQL reserved keywords
+                if self.next_if_token(Token::OpenParen).is_some() {
+                    let col_name = self.next_ident()?;
+                    self.next_expect(Token::CloseParen)?;
+                    ast::Expression::Function(ident, col_name)
+                } else {
+                    // Column reference
+                    ast::Expression::Field(ident)
+                }
             }
             Token::Number(n) => {
                 // Lexer scans both 123 and 123.45 as Token::Number(String)
@@ -302,25 +314,25 @@ impl<'a> Parser<'a> {
         while let Some(join_type) = self.parse_from_clause_join()? {
             let left = Box::new(item);
             let right = Box::new(self.parse_from_table_clause()?);
-            // 解析join条件
+            // Parse join condition
             let predicate = match join_type {
-                ast::JoinType::Cross => None, // Cross Join不允许有ON条件
+                ast::JoinType::Cross => None, // CROSS JOIN has no ON condition
                 _ => {
                     self.next_expect(Token::Keyword(Keyword::On))?;
-                    // 左列名
+                    // Left column
                     let l = self.parse_expression()?;
-                    // 之后希望是一个等号
+                    // Expect equals sign
                     self.next_expect(Token::Equal)?;
-                    // 右列名
+                    // Right column
                     let r = self.parse_expression()?;
 
                     let (l, r) = match join_type {
-                        // 如果是右表join则转成左表
+                        // For RIGHT JOIN, swap to convert to LEFT JOIN
                         ast::JoinType::Right => (r, l),
                         _ => (l, r)
                     };
 
-                    // on 条件
+                    // ON condition
                     let cond = Operation::Equal(Box::new(l), Box::new(r));
                     Some(ast::Expression::Operation(cond))
                 }
@@ -620,6 +632,25 @@ mod tests {
                     }),
                     join_type: ast::JoinType::Cross,
                     predicate: None
+                },
+                order_by: vec![],
+                limit: None,
+                offset: None,
+            }
+        );
+
+        let sql = "select count(a), min(b), max(c) from tbl1;";
+        let stmt = Parser::new(sql).parse()?;
+        assert_eq!(
+            stmt,
+            ast::Statement::Select {
+                select: vec![
+                    (ast::Expression::Function("count".into(), "a".into()), None),
+                    (ast::Expression::Function("min".into(), "b".into()), None),
+                    (ast::Expression::Function("max".into(), "c".into()), None),
+                ],
+                from: ast::FromItem::Table {
+                    name: "tbl1".into()
                 },
                 order_by: vec![],
                 limit: None,

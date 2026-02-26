@@ -67,12 +67,20 @@ pub enum Node {
         exprs: Vec<(Expression, Option<String>)>,
     },
 
-    /// Nested Loop Join execution node (Cartesian product)
+    /// Nested Loop Join execution node
     NestedLoopJoin {
         left: Box<Node>,
         right: Box<Node>,
-        predicate: Option<Expression>, // join条件
+        /// Join ON condition predicate
+        predicate: Option<Expression>,
         outer: bool,
+    },
+
+    /// Aggregate execution node (COUNT, SUM, MIN, MAX, AVG)
+    Aggregate {
+        source: Box<Node>,
+        /// Aggregate expressions with optional aliases
+        exprs: Vec<(Expression, Option<String>)>,
     },
 }
 

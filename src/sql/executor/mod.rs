@@ -1,5 +1,6 @@
-use crate::{error::Result, sql::{engine::Transaction, executor::{join::NestedLoopJoin, mutation::{Delete, Insert, Update}, query::{Limit, Offset, Order, Projection, Scan}, schema::CreateTable}, plan::Node, types::Row}};
+use crate::{error::Result, sql::{engine::Transaction, executor::{agg::Aggregate, join::NestedLoopJoin, mutation::{Delete, Insert, Update}, query::{Limit, Offset, Order, Projection, Scan}, schema::CreateTable}, plan::Node, types::Row}};
 
+mod agg;
 mod schema;
 mod mutation;
 mod query;
@@ -43,6 +44,7 @@ impl<T: Transaction + 'static> dyn Executor<T> {
                 predicate,
                 outer,
             } => NestedLoopJoin::new(Self::build(*left), Self::build(*right), predicate, outer),
+            Node::Aggregate { source, exprs } => Aggregate::new(Self::build(*source), exprs),
         }
     }
 }

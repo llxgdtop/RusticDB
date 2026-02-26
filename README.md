@@ -42,12 +42,20 @@ values ( expr [, ...] );
 
 ### 3. Select * From
 ```sql
-SELECT [* | col_name [ [ AS ] output_name [, ...] ]]
+SELECT [* | col_name | function [ [ AS ] output_name [, ...] ]]
 FROM from_item
 [ORDER BY col_name [asc | desc] [, ...]]
 [LIMIT count]
 [OFFSET count]
 ```
+
+where `function` is:
+* count(col_name)
+* min(col_name)
+* max(col_name)
+* sum(col_name)
+* avg(col_name)
+
 where `from_item` is:
 * table_name
 * table_name `join_type` table_name [`ON` predicate]
