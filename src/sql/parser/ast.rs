@@ -18,6 +18,9 @@ pub enum Statement {
     },
     /// SELECT statement
     Select {
+        // Starting from feat: Projection support, column names are also treated as expressions; 
+        // the second parameter indicates whether there is an alias.
+        select: Vec<(Expression, Option<String>)>, 
         table_name: String,
         order_by: Vec<(String, OrderDirection)>,
         limit: Option<Expression>,
@@ -53,9 +56,10 @@ pub struct Column {
     pub primary_key: bool,
 }
 
-/// Expression definition (currently only constants)
+/// Expression definition (currently only constants and columns's name)
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
+    Field(String),
     Consts(Consts),
 }
 

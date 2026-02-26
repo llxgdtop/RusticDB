@@ -1,4 +1,4 @@
-use crate::{error::Result, sql::{engine::Transaction, executor::{mutation::{Delete, Insert, Update}, query::{Limit, Offset, Order, Scan}, schema::CreateTable}, plan::Node, types::Row}};
+use crate::{error::Result, sql::{engine::Transaction, executor::{mutation::{Delete, Insert, Update}, query::{Limit, Offset, Order, Projection, Scan}, schema::CreateTable}, plan::Node, types::Row}};
 
 mod schema;
 mod mutation;
@@ -35,6 +35,7 @@ impl<T: Transaction + 'static> dyn Executor<T> {
             Node::Order { source, order_by } => Order::new(Self::build(*source), order_by),
             Node::Limit { source, limit } => Limit::new(Self::build(*source), limit),
             Node::Offset { source, offset } => Offset::new(Self::build(*source), offset),
+            Node::Projection { source, exprs } => Projection::new(Self::build(*source), exprs),
         }
     }
 }

@@ -42,7 +42,8 @@ values ( expr [, ...] );
 
 ### 3. Select * From
 ```sql
-SELECT * FROM table_name
+SELECT [* | col_name [ [ AS ] output_name [, ...] ]]
+FROM table_name
 [ORDER BY col_name [asc | desc] [, ...]]
 [LIMIT count]
 [OFFSET count]

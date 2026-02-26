@@ -60,6 +60,12 @@ pub enum Node {
         source: Box<Node>,
         offset: usize,
     },
+
+    /// Projection execution node (column selection)
+    Projection {
+        source: Box<Node>,
+        exprs: Vec<(Expression, Option<String>)>,
+    },
 }
 
 /// Execution plan wrapper

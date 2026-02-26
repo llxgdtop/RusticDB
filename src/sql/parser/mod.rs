@@ -114,14 +114,14 @@ impl<'a> Parser<'a> {
         Ok(column)
     }
 
-    /// Parses SELECT statement (currently only supports SELECT * FROM table)
+    /// Parses SELECT statement
     fn parse_select(&mut self) -> Result<ast::Statement> {
-        self.next_expect(Token::Keyword(Keyword::Select))?;
-        self.next_expect(Token::Asterisk)?;
+        let select = self.parse_select_clause()?;
         self.next_expect(Token::Keyword(Keyword::From))?;
 
         let table_name = self.next_ident()?;
         Ok(ast::Statement::Select {
+            select,
             table_name,
             order_by: self.parse_order_clause()?,
             limit: {
@@ -244,6 +244,10 @@ impl<'a> Parser<'a> {
     /// Parses an expression (currently only constants)
     fn parse_expression(&mut self) -> Result<ast::Expression> {
         Ok(match self.next()? {
+            Token::Ident(ident) => {
+                // Column reference
+                ast::Expression::Field(ident)
+            }
             Token::Number(n) => {
                 // Lexer scans both 123 and 123.45 as Token::Number(String)
                 // Need to distinguish between integer and float here
@@ -264,6 +268,31 @@ impl<'a> Parser<'a> {
                 )))
             }
         })
+    }
+
+    /// Parses SELECT clause (column list with optional aliases)
+    fn parse_select_clause(&mut self) -> Result<Vec<(Expression, Option<String>)>> {
+        self.next_expect(Token::Keyword(Keyword::Select))?;
+
+        let mut select = Vec::new();
+        // SELECT * - return empty vec to indicate all columns
+        if self.next_if_token(Token::Asterisk).is_some() {
+            return Ok(select);
+        }
+
+        // Parse column expressions with optional aliases
+        loop {
+            let expr = self.parse_expression()?;
+            let alias = match self.next_if_token(Token::Keyword(Keyword::As)) {
+                Some(_) => Some(self.next_ident()?),
+                None => None,
+            };
+            select.push((expr, alias));
+            if self.next_if_token(Token::Comma).is_none() {
+                break;
+            }
+        }
+        Ok(select)
     }
 
     /// Parses WHERE clause (column_name = expr)
@@ -451,6 +480,7 @@ mod tests {
         assert_eq!(
             stmt,
             ast::Statement::Select {
+                select: vec![],
                 table_name: "tbl1".to_string(),
                 order_by: vec![],
                 limit: Some(Expression::Consts(Consts::Integer(10))),
@@ -463,6 +493,7 @@ mod tests {
         assert_eq!(
             stmt,
             ast::Statement::Select {
+                select: vec![],
                 table_name: "tbl1".to_string(),
                 order_by: vec![
                     ("a".to_string(), OrderDirection::Asc),
@@ -473,6 +504,28 @@ mod tests {
                 offset: None,
             }
         );
+
+        let sql = "select a as col1, b as col2, c from tbl1 order by a, b asc, c desc;";
+        let stmt = Parser::new(sql).parse()?;
+        assert_eq!(
+            stmt,
+            ast::Statement::Select {
+                select: vec![
+                    (Expression::Field("a".into()), Some("col1".into())),
+                    (Expression::Field("b".into()), Some("col2".into())),
+                    (Expression::Field("c".into()), None),
+                ],
+                table_name: "tbl1".to_string(),
+                order_by: vec![
+                    ("a".to_string(), OrderDirection::Asc),
+                    ("b".to_string(), OrderDirection::Asc),
+                    ("c".to_string(), OrderDirection::Desc),
+                ],
+                limit: None,
+                offset: None,
+            }
+        );
+
         Ok(())
     }
 }

@@ -45,6 +45,7 @@ impl Planner {
                 values,
             },
             ast::Statement::Select { 
+                select,
                 table_name, 
                 order_by,
                 limit,
@@ -84,6 +85,14 @@ impl Planner {
                     }
                 }
                 
+                // projection
+                if !select.is_empty() {
+                    node = Node::Projection {
+                        source: Box::new(node),
+                        exprs: select,
+                    }
+                }
+
                 node
             },
             ast::Statement::Update {

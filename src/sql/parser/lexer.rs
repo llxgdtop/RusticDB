@@ -73,6 +73,7 @@ pub enum Keyword {
     Delete,
     Order,
     By,
+    As,
     // Literal keywords
     True,
     False,
@@ -127,6 +128,7 @@ impl Keyword {
             "DESC" => Keyword::Desc,
             "LIMIT" => Keyword::Limit,
             "OFFSET" => Keyword::Offset,
+            "AS" => Keyword::As,
             _ => return None,
         })
     }
@@ -167,6 +169,7 @@ impl Keyword {
             Keyword::Desc => "DESC",
             Keyword::Limit => "LIMIT",
             Keyword::Offset => "OFFSET",
+            Keyword::As => "AS",
         }
     }
 }
