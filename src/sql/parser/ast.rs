@@ -52,6 +52,7 @@ pub enum FromItem {
         left: Box<FromItem>,
         right: Box<FromItem>,
         join_type: JoinType,
+        predicate: Option<Expression>, // join的on条件，如果是cross join则没有
     },
 }
 
@@ -80,11 +81,12 @@ pub struct Column {
     pub primary_key: bool,
 }
 
-/// Expression definition (currently only constants and columns's name)
+// 表达式定义，目前不支持二元表达式，比如1+1
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
-    Field(String),
-    Consts(Consts),
+    Field(String), // 列名
+    Consts(Consts), // 常量
+    Operation(Operation), // 运算操作
 }
 
 /// Implements From trait to convert Consts into Expression
@@ -102,4 +104,12 @@ pub enum Consts {
     Integer(i64),
     Float(f64),
     String(String),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Operation {
+    // 相等。比如说tbl1 join tbl2 on tbl1id = tbl2id
+    // tbl1id就是tbl1的其中一个列，所以这里就用一个Box<Expression>
+    // 当然也可以是其它的运算操作与参数
+    Equal(Box<Expression>, Box<Expression>), 
 }

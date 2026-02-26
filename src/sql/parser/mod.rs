@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::iter::Peekable;
 use ast::Column;
-use crate::sql::parser::ast::{Expression, OrderDirection};
+use crate::sql::parser::ast::{Expression, Operation, OrderDirection};
 use crate::sql::parser::lexer::{Keyword, Lexer, Token};
 use crate::error::{Result, Error};
 use super::types::DataType;
@@ -302,7 +302,36 @@ impl<'a> Parser<'a> {
         while let Some(join_type) = self.parse_from_clause_join()? {
             let left = Box::new(item);
             let right = Box::new(self.parse_from_table_clause()?);
-            item = ast::FromItem::Join { left, right, join_type }
+            // 解析join条件
+            let predicate = match join_type {
+                ast::JoinType::Cross => None, // Cross Join不允许有ON条件
+                _ => {
+                    self.next_expect(Token::Keyword(Keyword::On))?;
+                    // 左列名
+                    let l = self.parse_expression()?;
+                    // 之后希望是一个等号
+                    self.next_expect(Token::Equal)?;
+                    // 右列名
+                    let r = self.parse_expression()?;
+
+                    let (l, r) = match join_type {
+                        // 如果是右表join则转成左表
+                        ast::JoinType::Right => (r, l),
+                        _ => (l, r)
+                    };
+
+                    // on 条件
+                    let cond = Operation::Equal(Box::new(l), Box::new(r));
+                    Some(ast::Expression::Operation(cond))
+                }
+            };
+
+            item = ast::FromItem::Join { 
+                left, 
+                right, 
+                join_type,
+                predicate,
+            } 
         }
         Ok(item)
     }
@@ -318,9 +347,18 @@ impl<'a> Parser<'a> {
     fn parse_from_clause_join(&mut self) -> Result<Option<ast::JoinType>> {
         if self.next_if_token(Token::Keyword(Keyword::Cross)).is_some() {
             self.next_expect(Token::Keyword(Keyword::Join))?;
-            return Ok(Some(ast::JoinType::Cross));
+            Ok(Some(ast::JoinType::Cross)) // Cross Join
+        } else if self.next_if_token(Token::Keyword(Keyword::Join)).is_some() {
+            Ok(Some(ast::JoinType::Inner)) // Inner Join
+        } else if self.next_if_token(Token::Keyword(Keyword::Left)).is_some() {
+            self.next_expect(Token::Keyword(Keyword::Join))?;
+            Ok(Some(ast::JoinType::Left)) // Left Join
+        } else if self.next_if_token(Token::Keyword(Keyword::Right)).is_some() {
+            self.next_expect(Token::Keyword(Keyword::Join))?;
+            Ok(Some(ast::JoinType::Right)) // Right Join
+        } else {
+            Ok(None)
         }
-        Ok(None)
     }
 
     /// Parses WHERE clause (column_name = expr)
@@ -574,12 +612,14 @@ mod tests {
                         right: Box::new(ast::FromItem::Table {
                             name: "tbl2".into()
                         }),
-                        join_type: ast::JoinType::Cross
+                        join_type: ast::JoinType::Cross,
+                        predicate: None
                     }),
                     right: Box::new(ast::FromItem::Table {
                         name: "tbl3".into()
                     }),
-                    join_type: ast::JoinType::Cross
+                    join_type: ast::JoinType::Cross,
+                    predicate: None
                 },
                 order_by: vec![],
                 limit: None,

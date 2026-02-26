@@ -124,17 +124,31 @@ impl Planner {
                 table_name: name, 
                 filter: None 
             },
-            ast::FromItem::Join {
-                left,
-                right,
-                join_type
-            } => match join_type {
-                ast::JoinType::Cross => Node::NestedLoopJoin {
-                    // Recursively build join nodes (base case: single table)
+            ast::FromItem::Join { 
+                left, 
+                right, 
+                join_type ,
+                predicate,
+            } =>  {
+                // 如果是 right join，则交换执行节点位置，避免重复编码
+                let (left, right) = match join_type {
+                    ast::JoinType::Right => (right, left),
+                    _ => (left, right),
+                };
+
+                let outer = match join_type {
+                    ast::JoinType::Cross | ast::JoinType::Inner => false,
+                    _ => true, // left和right都是outer join
+                };
+
+                Node::NestedLoopJoin {
+                    // 与执行器的Self::build(*source)一样，递归去构建执行节点
+                    // 构建到最后肯定为单表
                     left: Box::new(self.build_from_item(*left)?),
                     right: Box::new(self.build_from_item(*right)?),
-                },
-                _ => todo!(),
+                    predicate,
+                    outer,
+                }
             },
         })
     }

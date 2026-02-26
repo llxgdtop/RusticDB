@@ -76,6 +76,8 @@ pub enum Keyword {
     As,
     Cross,
     Join,
+    Left,
+    Right,
     // Literal keywords
     True,
     False,
@@ -91,6 +93,7 @@ pub enum Keyword {
     Desc,
     Limit,
     Offset,
+    On,
 }
 
 impl Keyword {
@@ -133,6 +136,9 @@ impl Keyword {
             "AS" => Keyword::As,
             "CROSS" => Keyword::Cross,
             "JOIN" => Keyword::Join,
+            "LEFT" => Keyword::Left,
+            "RIGHT" => Keyword::Right,
+            "ON" => Keyword::On,
             _ => return None,
         })
     }
@@ -176,6 +182,9 @@ impl Keyword {
             Keyword::As => "AS",
             Keyword::Cross => "CROSS",
             Keyword::Join => "JOIN",
+            Keyword::Left => "LEFT",
+            Keyword::Right => "RIGHT",
+            Keyword::On => "ON",
         }
     }
 }
