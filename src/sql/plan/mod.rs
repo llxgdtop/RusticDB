@@ -66,6 +66,12 @@ pub enum Node {
         source: Box<Node>,
         exprs: Vec<(Expression, Option<String>)>,
     },
+
+    /// Nested Loop Join execution node (Cartesian product)
+    NestedLoopJoin {
+        left: Box<Node>,
+        right: Box<Node>,
+    },
 }
 
 /// Execution plan wrapper

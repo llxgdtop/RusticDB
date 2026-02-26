@@ -116,13 +116,9 @@ impl<'a> Parser<'a> {
 
     /// Parses SELECT statement
     fn parse_select(&mut self) -> Result<ast::Statement> {
-        let select = self.parse_select_clause()?;
-        self.next_expect(Token::Keyword(Keyword::From))?;
-
-        let table_name = self.next_ident()?;
         Ok(ast::Statement::Select {
-            select,
-            table_name,
+            select: self.parse_select_clause()?,
+            from: self.parse_from_clause()?,
             order_by: self.parse_order_clause()?,
             limit: {
                 if self.next_if_token(Token::Keyword(Keyword::Limit)).is_some() {
@@ -293,6 +289,38 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(select)
+    }
+
+    /// Parses FROM clause (single table or multiple tables with JOINs)
+    ///
+    /// For multiple JOINs, the first two tables are joined first,
+    /// then the result becomes the left table for the next JOIN.
+    fn parse_from_clause(&mut self) -> Result<ast::FromItem> {
+        self.next_expect(Token::Keyword(Keyword::From))?;
+        let mut item = self.parse_from_table_clause()?;
+        // Handle multiple JOINs: each iteration joins the previous result with a new table
+        while let Some(join_type) = self.parse_from_clause_join()? {
+            let left = Box::new(item);
+            let right = Box::new(self.parse_from_table_clause()?);
+            item = ast::FromItem::Join { left, right, join_type }
+        }
+        Ok(item)
+    }
+
+    /// Parses a single table reference
+    fn parse_from_table_clause(&mut self) -> Result<ast::FromItem> {
+        Ok(ast::FromItem::Table {
+            name: self.next_ident()?,
+        })
+    }
+
+    /// Parses JOIN type (currently only CROSS JOIN supported)
+    fn parse_from_clause_join(&mut self) -> Result<Option<ast::JoinType>> {
+        if self.next_if_token(Token::Keyword(Keyword::Cross)).is_some() {
+            self.next_expect(Token::Keyword(Keyword::Join))?;
+            return Ok(Some(ast::JoinType::Cross));
+        }
+        Ok(None)
     }
 
     /// Parses WHERE clause (column_name = expr)
@@ -481,7 +509,9 @@ mod tests {
             stmt,
             ast::Statement::Select {
                 select: vec![],
-                table_name: "tbl1".to_string(),
+                from: ast::FromItem::Table {
+                    name: "tbl1".into()
+                },
                 order_by: vec![],
                 limit: Some(Expression::Consts(Consts::Integer(10))),
                 offset: Some(Expression::Consts(Consts::Integer(20))),
@@ -494,7 +524,9 @@ mod tests {
             stmt,
             ast::Statement::Select {
                 select: vec![],
-                table_name: "tbl1".to_string(),
+                from: ast::FromItem::Table {
+                    name: "tbl1".into()
+                },
                 order_by: vec![
                     ("a".to_string(), OrderDirection::Asc),
                     ("b".to_string(), OrderDirection::Asc),
@@ -515,7 +547,9 @@ mod tests {
                     (Expression::Field("b".into()), Some("col2".into())),
                     (Expression::Field("c".into()), None),
                 ],
-                table_name: "tbl1".to_string(),
+                from: ast::FromItem::Table {
+                    name: "tbl1".into()
+                },
                 order_by: vec![
                     ("a".to_string(), OrderDirection::Asc),
                     ("b".to_string(), OrderDirection::Asc),
@@ -523,6 +557,54 @@ mod tests {
                 ],
                 limit: None,
                 offset: None,
+            }
+        );
+
+        let sql = "select * from tbl1 cross join tbl2 cross join tbl3;";
+        let stmt = Parser::new(sql).parse()?;
+        assert_eq!(
+            stmt,
+            ast::Statement::Select {
+                select: vec![],
+                from: ast::FromItem::Join {
+                    left: Box::new(ast::FromItem::Join {
+                        left: Box::new(ast::FromItem::Table {
+                            name: "tbl1".into()
+                        }),
+                        right: Box::new(ast::FromItem::Table {
+                            name: "tbl2".into()
+                        }),
+                        join_type: ast::JoinType::Cross
+                    }),
+                    right: Box::new(ast::FromItem::Table {
+                        name: "tbl3".into()
+                    }),
+                    join_type: ast::JoinType::Cross
+                },
+                order_by: vec![],
+                limit: None,
+                offset: None,
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parser_update() -> Result<()> {
+        let sql = "update tabl set a = 1, b = 2.0 where c = 'a';";
+        let stmt = Parser::new(sql).parse()?;
+        assert_eq!(
+            stmt,
+            ast::Statement::Update {
+                table_name: "tabl".into(),
+                columns: vec![
+                    ("a".into(), ast::Consts::Integer(1).into()),
+                    ("b".into(), ast::Consts::Float(2.0).into()),
+                ]
+                .into_iter()
+                .collect(),
+                where_clause: Some(("c".into(), ast::Consts::String("a".into()).into())),
             }
         );
 

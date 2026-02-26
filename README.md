@@ -43,11 +43,23 @@ values ( expr [, ...] );
 ### 3. Select * From
 ```sql
 SELECT [* | col_name [ [ AS ] output_name [, ...] ]]
-FROM table_name
+FROM from_item
 [ORDER BY col_name [asc | desc] [, ...]]
 [LIMIT count]
 [OFFSET count]
 ```
+where `from_item` is:
+* table_name
+* table_name `join_type` table_name [`ON` predicate]
+
+where `join_type` is:
+* cross join
+* join
+* left join
+* right join
+
+where `on predicate` is:
+* column_name = column_name
 
 ### 4. Update
 ```sql

@@ -46,15 +46,13 @@ impl Planner {
             },
             ast::Statement::Select { 
                 select,
-                table_name, 
+                from,
                 order_by,
                 limit,
                 offset,
             } => {
-                let mut node = Node::Scan {
-                    table_name,
-                    filter: None,
-                };
+                // Build scan node from FROM clause (single table or join result)
+                let mut node = self.build_from_item(from)?;
 
                 if !order_by.is_empty() {
                     node = Node::Order {
@@ -116,6 +114,27 @@ impl Planner {
                     table_name,
                     filter: where_clause,
                 }),
+            },
+        })
+    }
+
+    fn build_from_item(&self, item: ast::FromItem) -> Result<Node> {
+        Ok(match item {
+            ast::FromItem::Table { name } => Node::Scan { 
+                table_name: name, 
+                filter: None 
+            },
+            ast::FromItem::Join {
+                left,
+                right,
+                join_type
+            } => match join_type {
+                ast::JoinType::Cross => Node::NestedLoopJoin {
+                    // Recursively build join nodes (base case: single table)
+                    left: Box::new(self.build_from_item(*left)?),
+                    right: Box::new(self.build_from_item(*right)?),
+                },
+                _ => todo!(),
             },
         })
     }

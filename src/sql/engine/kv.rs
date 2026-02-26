@@ -526,19 +526,38 @@ mod tests {
 
         match s.execute("select a, b as col2 from t3 order by c, a desc limit 100;")? {
             ResultSet::Scan { columns, rows } => {
-                for col in columns {
-                    print!("{} ", col);
-                }
-                println!();
-                println!("-----------");
-                for r in rows {
-                    println!("{:?}", r);
-                }
+                assert_eq!(2, columns.len());
+                assert_eq!(6, rows.len());
             }
             _ => unreachable!(),
         }
 
-    
+        Ok(())
+    }
+
+    #[test]
+    fn test_join() -> Result<()> {
+        let kvengine = KVEngine::new(MemoryEngine::new());
+        let mut s = kvengine.session()?;
+        s.execute("create table t1 (a int primary key);")?;
+        s.execute("create table t2 (b int primary key);")?;
+        s.execute("create table t3 (c int primary key);")?;
+
+        s.execute("insert into t1 values (1), (2), (3);")?;
+        s.execute("insert into t2 values (4), (5), (6);")?;
+        s.execute("insert into t3 values (7), (8), (9);")?;
+
+        match s.execute("select * from t1 cross join t2 cross join t3;")? {
+            ResultSet::Scan { columns, rows } => {
+                assert_eq!(3, columns.len());
+                assert_eq!(27, rows.len());
+                // for row in rows {
+                //     println!("{:?}", row);
+                // }
+            }
+            _ => unreachable!(),
+        }
+
         Ok(())
     }
 }

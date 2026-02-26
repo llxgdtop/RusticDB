@@ -18,10 +18,10 @@ pub enum Statement {
     },
     /// SELECT statement
     Select {
-        // Starting from feat: Projection support, column names are also treated as expressions; 
+        // Starting from feat: Projection support, column names are also treated as expressions;
         // the second parameter indicates whether there is an alias.
-        select: Vec<(Expression, Option<String>)>, 
-        table_name: String,
+        select: Vec<(Expression, Option<String>)>,
+        from: FromItem,
         order_by: Vec<(String, OrderDirection)>,
         limit: Option<Expression>,
         offset: Option<Expression>,
@@ -37,6 +37,30 @@ pub enum Statement {
         table_name: String,
         where_clause: Option<(String, Expression)>,
     },
+}
+
+/// FROM clause item - represents a table or join expression
+#[derive(Debug, PartialEq)]
+pub enum FromItem {
+    /// Single table reference
+    Table {
+        name: String,
+    },
+
+    /// Join expression (two tables joined together)
+    Join {
+        left: Box<FromItem>,
+        right: Box<FromItem>,
+        join_type: JoinType,
+    },
+}
+
+#[derive(Debug, PartialEq)]
+pub enum JoinType {
+    Cross,
+    Inner,
+    Left,
+    Right,
 }
 
 /// Sort direction (ascending or descending)
