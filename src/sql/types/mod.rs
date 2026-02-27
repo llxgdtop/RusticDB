@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, fmt::Display};
+use std::{cmp::Ordering, fmt::Display, hash::Hash};
 
 use serde::{Deserialize, Serialize};
 use crate::sql::parser::ast::{Consts, Expression};
@@ -77,6 +77,36 @@ impl PartialOrd for Value {
         }
     }
 }
+
+/// Implements Hash for Value to enable use as HashMap key (required for GROUP BY)
+///
+/// Uses a type discriminator byte (write_u8) to distinguish between variants,
+/// then delegates to the underlying type's hash implementation.
+impl Hash for Value {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Value::Null => state.write_u8(0),
+            Value::Boolean(v) => {
+                state.write_u8(1);
+                v.hash(state);
+            }
+            Value::Integer(v) => {
+                state.write_u8(2);
+                v.hash(state);
+            }
+            Value::Float(v) => {
+                state.write_u8(3);
+                v.to_be_bytes().hash(state);
+            }
+            Value::String(v) => {
+                state.write_u8(2);
+                v.hash(state);
+            }
+        }
+    }
+}
+
+impl Eq for Value {}
 
 /// A row is a vector of values
 pub type Row = Vec<Value>;

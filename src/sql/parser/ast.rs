@@ -21,6 +21,8 @@ pub enum Statement {
         /// Column expressions with optional aliases (e.g., Count(*) as cnt)
         select: Vec<(Expression, Option<String>)>,
         from: FromItem,
+        /// GROUP BY expression (None means entire table is one group)
+        group_by: Option<Expression>,
         order_by: Vec<(String, OrderDirection)>,
         limit: Option<Expression>,
         offset: Option<Expression>,

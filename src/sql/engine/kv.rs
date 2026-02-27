@@ -637,4 +637,56 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_group_by() -> Result<()> {
+        let kvengine = KVEngine::new(MemoryEngine::new());
+        let mut s = kvengine.session()?;
+        s.execute("create table t1 (a int primary key, b text, c float);")?;
+
+        s.execute("insert into t1 values (1, 'aa', 3.1);")?;
+        s.execute("insert into t1 values (2, 'bb', 5.3);")?;
+        s.execute("insert into t1 values (3, null, NULL);")?;
+        s.execute("insert into t1 values (4, null, 4.6);")?;
+        s.execute("insert into t1 values (5, 'bb', 5.8);")?;
+        s.execute("insert into t1 values (6, 'dd', 1.4);")?;
+
+        match s.execute("select b, min(c), max(a), avg(c) from t1 group by b order by avg;")? {
+            ResultSet::Scan { columns, rows } => {
+                assert_eq!(columns, vec!["b", "min", "max", "avg"]);
+                assert_eq!(
+                    rows,
+                    vec![
+                        vec![
+                            Value::String("dd".to_string()),
+                            Value::Float(1.4),
+                            Value::Integer(6),
+                            Value::Float(1.4)
+                        ],
+                        vec![
+                            Value::String("aa".to_string()),
+                            Value::Float(3.1),
+                            Value::Integer(1),
+                            Value::Float(3.1)
+                        ],
+                        vec![
+                            Value::Null,
+                            Value::Float(4.6),
+                            Value::Integer(4),
+                            Value::Float(4.6)
+                        ],
+                        vec![
+                            Value::String("bb".to_string()),
+                            Value::Float(5.3),
+                            Value::Integer(5),
+                            Value::Float(5.55)
+                        ],
+                    ]
+                );
+            }
+            _ => unreachable!(),
+        }
+
+        Ok(())
+    }
 }

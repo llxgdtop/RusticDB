@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     error::{Error, Result},
     sql::{
@@ -13,14 +15,20 @@ use super::{Executor, ResultSet};
 pub struct Aggregate<T: Transaction> {
     source: Box<dyn Executor<T>>,
     exprs: Vec<(Expression, Option<String>)>,
+    group_by: Option<Expression>,
 }
 
 impl<T: Transaction> Aggregate<T> {
     pub fn new(
         source: Box<dyn Executor<T>>,
         exprs: Vec<(Expression, Option<String>)>,
+        group_by: Option<Expression>,
     ) -> Box<Self> {
-        Box::new(Self { source, exprs })
+        Box::new(Self {
+            source,
+            exprs,
+            group_by,
+        })
     }
 }
 
@@ -29,21 +37,102 @@ impl<T: Transaction> Executor<T> for Aggregate<T> {
         if let ResultSet::Scan { columns, rows } = self.source.execute(txn)? {
             let mut new_cols = Vec::new();
             let mut new_rows = Vec::new();
+        
 
-            for (expr, alias) in self.exprs {
-                if let ast::Expression::Function(func_name, col_name) = expr {
-                    let calculator = <dyn Calculator>::build(&func_name)?;
-                    let val = calculator.calc(&col_name, &columns, &rows)?;
+            // Closure to compute aggregate values or extract group key values
+            // col_val: the group key value (None if no GROUP BY)
+            // rows: all rows in the group
+            // Example: SELECT c2, MIN(c1) FROM t GROUP BY c2;
+            let mut calc = |col_val: Option<&Value>, rows: &Vec<Vec<Value>>| -> Result<Vec<Value>> {
+                let mut new_row = Vec::new();
+                for (expr, alias) in &self.exprs {
+                    match expr {
+                        // Aggregate function - compute the result
+                        ast::Expression::Function(func_name, col_name) => {
+                            let calculator = <dyn Calculator>::build(&func_name)?;
+                            let val = calculator.calc(&col_name, &columns, rows)?;
 
-                    // Use alias if provided, otherwise use function name
-                    // e.g., min(a) -> "min", min(a) as min_val -> "min_val"
-                    new_cols.push(if let Some(a) = alias { a } else { func_name });
-                    new_rows.push(val);
+                            // Build column name (use alias if provided, otherwise function name)
+                            // Guard prevents duplicate column names when processing multiple groups
+                            if new_cols.len() < self.exprs.len() {
+                                new_cols.push(if let Some(a) = alias {
+                                    a.clone()
+                                } else {
+                                    func_name.clone()
+                                });
+                            }
+                            new_row.push(val);
+                        }
+                        // Column reference (group key) - extract the value directly
+                        ast::Expression::Field(col) => {
+                            // Non-aggregate column without GROUP BY is an error
+                            if self.group_by.is_none() {
+                                return Err(Error::Internal(format!(
+                                    "column {} must appear in GROUP BY or be used in aggregate function",
+                                    col
+                                )));
+                            }
+                            // Verify column matches GROUP BY column
+                            if let Some(ast::Expression::Field(group_col)) = &self.group_by {
+                                if *col != *group_col {
+                                    return Err(Error::Internal(format!(
+                                        "{} must appear in the GROUP BY clause or aggregate function",
+                                        col
+                                    )));
+                                }
+                            }
+
+                            if new_cols.len() < self.exprs.len() {
+                                new_cols.push(if let Some(a) = alias {
+                                    a.clone()
+                                } else {
+                                    col.clone()
+                                });
+                            }
+                            new_row.push(col_val.unwrap().clone());
+                        }
+                        _ => return Err(Error::Internal("unexpected expression".into())),
+                    }
                 }
+                Ok(new_row)
+            };
+
+            // Process GROUP BY: group rows and compute aggregates for each group
+            if let Some(ast::Expression::Field(group_col)) = &self.group_by {
+                // Find the group key column position
+                let pos = match columns.iter().position(|c| *c == *group_col) {
+                    Some(pos) => pos,
+                    None => {
+                        return Err(Error::Internal(format!(
+                            "group by column {} not in table",
+                            group_col
+                        )))
+                    }
+                };
+
+                // Group rows by the group key value
+                // HashMap: key = group key value, value = all rows in that group
+                let mut agg_map: HashMap<&Value, Vec<Vec<Value>>> = HashMap::new();
+                for row in rows.iter() {
+                    let key = &row[pos];
+                    let value = agg_map.entry(key).or_insert(Vec::new());
+                    value.push(row.clone());
+                }
+
+                // Compute aggregates for each group
+                for (key, group_rows) in agg_map {
+                    let row = calc(Some(key), &group_rows)?;
+                    new_rows.push(row);
+                }
+            } else {
+                // No GROUP BY - treat entire table as one group
+                let row = calc(None, &rows)?;
+                new_rows.push(row);
             }
+
             return Ok(ResultSet::Scan {
                 columns: new_cols,
-                rows: vec![new_rows],
+                rows: new_rows,
             });
         }
         Err(Error::Internal("Unexpected result set".into()))

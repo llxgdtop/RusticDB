@@ -44,6 +44,7 @@ values ( expr [, ...] );
 ```sql
 SELECT [* | col_name | function [ [ AS ] output_name [, ...] ]]
 FROM from_item
+[GROUP BY col_name]
 [ORDER BY col_name [asc | desc] [, ...]]
 [LIMIT count]
 [OFFSET count]

@@ -44,7 +44,11 @@ impl<T: Transaction + 'static> dyn Executor<T> {
                 predicate,
                 outer,
             } => NestedLoopJoin::new(Self::build(*left), Self::build(*right), predicate, outer),
-            Node::Aggregate { source, exprs } => Aggregate::new(Self::build(*source), exprs),
+            Node::Aggregate {
+                source,
+                exprs,
+                group_by,
+            } => Aggregate::new(Self::build(*source), exprs, group_by),
         }
     }
 }

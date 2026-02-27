@@ -81,6 +81,8 @@ pub enum Node {
         source: Box<Node>,
         /// Aggregate expressions with optional aliases
         exprs: Vec<(Expression, Option<String>)>,
+        /// GROUP BY expression (group key)
+        group_by: Option<Expression>,
     },
 }
 
