@@ -119,7 +119,9 @@ impl<'a> Parser<'a> {
         Ok(ast::Statement::Select {
             select: self.parse_select_clause()?,
             from: self.parse_from_clause()?,
+            where_clause: self.parse_where_clause()?,
             group_by: self.parse_group_clause()?,
+            having: self.parse_having_clause()?,
             order_by: self.parse_order_clause()?,
             limit: {
                 if self.next_if_token(Token::Keyword(Keyword::Limit)).is_some() {
@@ -238,6 +240,29 @@ impl<'a> Parser<'a> {
         })
     }
     
+    /// Parses operation expression (e.g., col_name = a becomes Field = Consts)
+    fn parse_opreation_expr(&mut self) -> Result<ast::Expression> {
+        // Parse left operand first
+        let left = self.parse_expression()?;
+        // Parse right operand based on operator type
+        // Result: e.g., Field(id) > Consts(100)
+        Ok(match self.next()? {
+            Token::Equal => ast::Expression::Operation(Operation::Equal(
+                Box::new(left),
+                Box::new(self.parse_expression()?),
+            )),
+            Token::GreaterThan => ast::Expression::Operation(Operation::GreaterThan(
+                Box::new(left),
+                Box::new(self.parse_expression()?),
+            )),
+            Token::LessThan => ast::Expression::Operation(Operation::LessThan(
+                Box::new(left),
+                Box::new(self.parse_expression()?),
+            )),
+            _ => return Err(Error::Internal("Unexpected token".into())),
+        })
+    }
+
     /// Parses an expression (currently only constants)
     fn parse_expression(&mut self) -> Result<ast::Expression> {
         Ok(match self.next()? {
@@ -384,15 +409,24 @@ impl<'a> Parser<'a> {
         Ok(Some(self.parse_expression()?))
     }
 
-    /// Parses WHERE clause (column_name = expr)
-    fn parse_where_clause(&mut self) -> Result<Option<(String, Expression)>> {
+    /// Parses WHERE clause (e.g., column_name = expr)
+    fn parse_where_clause(&mut self) -> Result<Option<Expression>> {
         if self.next_if_token(Token::Keyword(Keyword::Where)).is_none() {
-            return Ok(None) // No WHERE condition
+            return Ok(None); // No WHERE condition
         }
-        let col = self.next_ident()?;
-        self.next_expect(Token::Equal)?;
-        let val = self.parse_expression()?;
-        Ok(Some((col, val)))
+        Ok(Some(self.parse_opreation_expr()?))
+    }
+
+    /// Parses HAVING clause
+    fn parse_having_clause(&mut self) -> Result<Option<Expression>> {
+        if self
+            .next_if_token(Token::Keyword(Keyword::Having))
+            .is_none()
+        {
+            return Ok(None);
+        }
+
+        Ok(Some(self.parse_opreation_expr()?))
     }
 
     /// Parses ORDER BY clause
@@ -564,7 +598,7 @@ mod tests {
 
     #[test]
     fn test_parser_select() -> Result<()> {
-        let sql = "select * from tbl1 limit 10 offset 20;";
+        let sql = "select * from tbl1 where a = 100 limit 10 offset 20;";
         let stmt = Parser::new(sql).parse()?;
         assert_eq!(
             stmt,
@@ -573,7 +607,12 @@ mod tests {
                 from: ast::FromItem::Table {
                     name: "tbl1".into()
                 },
+                where_clause: Some(ast::Expression::Operation(ast::Operation::Equal(
+                    Box::new(ast::Expression::Field("a".into())),
+                    Box::new(ast::Expression::Consts(Consts::Integer(100)))
+                ))),
                 group_by: None,
+                having: None,
                 order_by: vec![],
                 limit: Some(Expression::Consts(Consts::Integer(10))),
                 offset: Some(Expression::Consts(Consts::Integer(20))),
@@ -590,6 +629,8 @@ mod tests {
                     name: "tbl1".into()
                 },
                 group_by: None,
+                where_clause: None,
+                having: None,
                 order_by: vec![
                     ("a".to_string(), OrderDirection::Asc),
                     ("b".to_string(), OrderDirection::Asc),
@@ -610,15 +651,17 @@ mod tests {
                     (Expression::Field("b".into()), Some("col2".into())),
                     (Expression::Field("c".into()), None),
                 ],
+                group_by: None,
                 from: ast::FromItem::Table {
                     name: "tbl1".into()
                 },
-                group_by: None,
                 order_by: vec![
                     ("a".to_string(), OrderDirection::Asc),
                     ("b".to_string(), OrderDirection::Asc),
                     ("c".to_string(), OrderDirection::Desc),
                 ],
+                where_clause: None,
+                having: None,
                 limit: None,
                 offset: None,
             }
@@ -647,6 +690,8 @@ mod tests {
                     join_type: ast::JoinType::Cross,
                     predicate: None
                 },
+                having: None,
+                where_clause: None,
                 group_by: None,
                 order_by: vec![],
                 limit: None,
@@ -654,7 +699,7 @@ mod tests {
             }
         );
 
-        let sql = "select count(a), min(b), max(c) from tbl1 group by a;";
+        let sql = "select count(a), min(b), max(c) from tbl1 group by a having min = 10;";
         let stmt = Parser::new(sql).parse()?;
         assert_eq!(
             stmt,
@@ -667,7 +712,12 @@ mod tests {
                 from: ast::FromItem::Table {
                     name: "tbl1".into()
                 },
+                where_clause: None,
                 group_by: Some(ast::Expression::Field("a".into())),
+                having: Some(ast::Expression::Operation(ast::Operation::Equal(
+                    Box::new(ast::Expression::Field("min".into())),
+                    Box::new(ast::Expression::Consts(Consts::Integer(10)))
+                ))),
                 order_by: vec![],
                 limit: None,
                 offset: None,
@@ -691,7 +741,10 @@ mod tests {
                 ]
                 .into_iter()
                 .collect(),
-                where_clause: Some(("c".into(), ast::Consts::String("a".into()).into())),
+                where_clause: Some(ast::Expression::Operation(ast::Operation::Equal(
+                    Box::new(ast::Expression::Field("c".into())),
+                    Box::new(ast::Expression::Consts(Consts::String("a".into())))
+                ))),
             }
         );
 

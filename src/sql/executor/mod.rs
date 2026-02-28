@@ -1,4 +1,4 @@
-use crate::{error::Result, sql::{engine::Transaction, executor::{agg::Aggregate, join::NestedLoopJoin, mutation::{Delete, Insert, Update}, query::{Limit, Offset, Order, Projection, Scan}, schema::CreateTable}, plan::Node, types::Row}};
+use crate::{error::Result, sql::{engine::Transaction, executor::{agg::Aggregate, join::NestedLoopJoin, mutation::{Delete, Insert, Update}, query::{Filter, Limit, Offset, Order, Projection, Scan}, schema::CreateTable}, plan::Node, types::Row}};
 
 mod agg;
 mod schema;
@@ -49,6 +49,7 @@ impl<T: Transaction + 'static> dyn Executor<T> {
                 exprs,
                 group_by,
             } => Aggregate::new(Self::build(*source), exprs, group_by),
+            Node::Filter { source, predicate } => Filter::new(Self::build(*source), predicate),
         }
     }
 }

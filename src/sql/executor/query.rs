@@ -1,17 +1,17 @@
 use std::{cmp::Ordering, collections::HashMap};
 
-use crate::{error::{Error, Result}, sql::{engine::Transaction, executor::ResultSet, parser::ast::{Expression, OrderDirection}}};
+use crate::{error::{Error, Result}, sql::{engine::Transaction, executor::ResultSet, parser::ast::{Expression, OrderDirection, evaluate_expr}, types::Value}};
 
 use super::Executor;
 
 /// Table scan executor (SELECT)
 pub struct Scan {
     table_name: String,
-    filter: Option<(String, Expression)>,
+    filter: Option<Expression>,
 }
 
 impl Scan {
-    pub fn new(table_name: String, filter: Option<(String, Expression)>) -> Box<Self> {
+    pub fn new(table_name: String, filter: Option<Expression>) -> Box<Self> {
         Box::new(Self { table_name, filter })
     }
 }
@@ -24,6 +24,44 @@ impl<T: Transaction> Executor<T> for Scan {
             columns: table.columns.into_iter().map(|c| c.name.clone()).collect(), 
             rows 
         })
+    }
+}
+
+/// Filter executor for HAVING clause - filters aggregated results
+/// Similar to WHERE clause processing in kv.rs
+pub struct Filter<T: Transaction> {
+    source: Box<dyn Executor<T>>,
+    predicate: Expression,
+}
+
+impl<T: Transaction> Filter<T> {
+    pub fn new(source: Box<dyn Executor<T>>, predicate: Expression) -> Box<Self> {
+        Box::new(Self { source, predicate })
+    }
+}
+
+impl<T: Transaction> Executor<T> for Filter<T> {
+    fn execute(self: Box<Self>, txn: &mut T) -> Result<ResultSet> {
+        match self.source.execute(txn)? {
+            ResultSet::Scan { columns, rows } => {
+                let mut new_rows = Vec::new();
+                for row in rows {
+                    match evaluate_expr(&self.predicate, &columns, &row, &columns, &row)? {
+                        Value::Null => {}
+                        Value::Boolean(false) => {}
+                        Value::Boolean(true) => {
+                            new_rows.push(row);
+                        }
+                        _ => return Err(Error::Internal("Unexpected expression".into())),
+                    }
+                }
+                Ok(ResultSet::Scan {
+                    columns,
+                    rows: new_rows,
+                })
+            }
+            _ => return Err(Error::Internal("Unexpected result set".into())),
+        }
     }
 }
 

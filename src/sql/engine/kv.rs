@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::{Error, Result},
     sql::{
-        parser::ast::Expression, schema::Table, types::{Row, Value}
+        parser::ast::{Expression, evaluate_expr}, schema::Table, types::{Row, Value}
     },
     storage::{self, engine::Engine as StorageEngine, keycode::serialize_key},
 };
@@ -119,7 +119,7 @@ impl<E: StorageEngine> Transaction for KVTransaction<E> {
     fn scan_table(
         &self,
         table_name: String,
-        filter: Option<(String, Expression)>,
+        filter: Option<Expression>,
     ) -> Result<Vec<Row>> {
         let prefix = KeyPrefix::Row(table_name.clone()).encode()?;
         let table = self.must_get_table(table_name)?;
@@ -128,12 +128,20 @@ impl<E: StorageEngine> Transaction for KVTransaction<E> {
         let mut rows = Vec::new();
         for result in results {
             let row: Row = bincode::deserialize(&result.value)?;
-            if let Some((col, expr)) = &filter {
-                let col_index = table.get_col_index(&col)?;
-                if Value::from_expression(expr.clone()) == row[col_index] {
-                    rows.push(row);
+            if let Some(expr) = &filter {
+                let cols = table.columns.iter().map(|c| c.name.clone()).collect();
+                // When lcols = rcols, both sides reference the same table (single table scan)
+                // This reuses the same evaluate_expr function used for JOIN execution
+                match evaluate_expr(expr, &cols, &row, &cols, &row)? {
+                    Value::Null => {}
+                    Value::Boolean(false) => {}
+                    Value::Boolean(true) => {
+                        rows.push(row);
+                    }
+                    _ => return Err(Error::Internal("Unexpected expression".into())),
                 }
             } else {
+                // No filter means select all rows
                 rows.push(row);
             }
         }
@@ -683,6 +691,38 @@ mod tests {
                         ],
                     ]
                 );
+            }
+            _ => unreachable!(),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_filter() -> Result<()> {
+        let kvengine = KVEngine::new(MemoryEngine::new());
+        let mut s = kvengine.session()?;
+        s.execute("create table t1 (a int primary key, b text, c float, d bool);")?;
+
+        s.execute("insert into t1 values (1, 'aa', 3.1, true);")?;
+        s.execute("insert into t1 values (2, 'bb', 5.3, true);")?;
+        s.execute("insert into t1 values (3, null, NULL, false);")?;
+        s.execute("insert into t1 values (4, null, 4.6, false);")?;
+        s.execute("insert into t1 values (5, 'bb', 5.8, true);")?;
+        s.execute("insert into t1 values (6, 'dd', 1.4, false);")?;
+
+        match s.execute("select * from t1 where d < true;")? {
+            ResultSet::Scan { columns, rows } => {
+                assert_eq!(4, columns.len());
+                assert_eq!(3, rows.len());
+            }
+            _ => unreachable!(),
+        }
+
+        match s.execute("select b, sum(c) from t1 group by b having sum < 5 order by sum;")? {
+            ResultSet::Scan { columns, rows } => {
+                assert_eq!(2, columns.len());
+                assert_eq!(3, rows.len());
             }
             _ => unreachable!(),
         }

@@ -1,4 +1,4 @@
-use crate::{error::{Error, Result}, sql::{parser::ast, plan::{Node, Plan}, schema::{self, Table}, types::Value}};
+use crate::{error::{Error, Result}, sql::{parser::ast::{self, Expression}, plan::{Node, Plan}, schema::{self, Table}, types::Value}};
 
 /// Query planner - converts AST into execution plan nodes
 pub struct Planner;
@@ -44,18 +44,23 @@ impl Planner {
                 columns: columns.unwrap_or_default(),
                 values,
             },
-            ast::Statement::Select { 
+            ast::Statement::Select {
                 select,
                 from,
+                // WHERE clause - should be an Operation variant (e.g., Equal, GreaterThan, LessThan)
+                // not a Function variant
+                where_clause,
                 group_by,
+                having,
                 order_by,
                 limit,
                 offset,
             } => {
                 // Build scan node from FROM clause (single table or join result)
-                let mut node = self.build_from_item(from)?;
+                // Also determines the Scan filter condition
+                let mut node = self.build_from_item(from, &where_clause)?;
 
-                // aggregate - detect aggregate functions in select expressions
+                // aggregate - detect aggregate functions in select expressions、group by
                 let mut has_agg = false;
                 if !select.is_empty() {
                     for (expr, _) in select.iter() {
@@ -73,6 +78,14 @@ impl Planner {
                             exprs: select.clone(),
                             group_by,
                         }
+                    }
+                }
+
+                // having
+                if let Some(expr) = having {
+                    node = Node::Filter {
+                        source: Box::new(node),
+                        predicate: expr,
                     }
                 }
 
@@ -146,11 +159,11 @@ impl Planner {
         })
     }
 
-    fn build_from_item(&self, item: ast::FromItem) -> Result<Node> {
+    fn build_from_item(&self, item: ast::FromItem, filter: &Option<Expression>) -> Result<Node> {
         Ok(match item {
             ast::FromItem::Table { name } => Node::Scan { 
                 table_name: name, 
-                filter: None 
+                filter: filter.clone(),
             },
             ast::FromItem::Join { 
                 left, 
@@ -171,8 +184,8 @@ impl Planner {
 
                 Node::NestedLoopJoin {
                     // Recursively build join nodes (base case: single table)
-                    left: Box::new(self.build_from_item(*left)?),
-                    right: Box::new(self.build_from_item(*right)?),
+                    left: Box::new(self.build_from_item(*left, filter)?),
+                    right: Box::new(self.build_from_item(*right, filter)?),
                     predicate,
                     outer,
                 }

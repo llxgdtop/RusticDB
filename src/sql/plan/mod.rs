@@ -26,7 +26,7 @@ pub enum Node {
     Scan {
         table_name: String,
         /// Optional WHERE clause filter
-        filter: Option<(String, Expression)>,
+        filter: Option<Expression>,
     },
 
     /// UPDATE execution node
@@ -71,7 +71,8 @@ pub enum Node {
     NestedLoopJoin {
         left: Box<Node>,
         right: Box<Node>,
-        /// Join ON condition predicate
+        /// Join ON condition (None for CROSS JOIN)
+        /// Expression should be an Operation variant, e.g., Operation(Equal(Field(col1), Consts(100)))
         predicate: Option<Expression>,
         outer: bool,
     },
@@ -83,6 +84,15 @@ pub enum Node {
         exprs: Vec<(Expression, Option<String>)>,
         /// GROUP BY expression (group key)
         group_by: Option<Expression>,
+    },
+
+    /// Filter execution node (HAVING clause)
+    /// Filters aggregated results based on HAVING condition
+    Filter {
+        /// Source node (typically an Aggregate node)
+        source: Box<Node>,
+        /// HAVING predicate - must be an Operation variant (not optional, HAVING requires an expression)
+        predicate: Expression,
     },
 }
 

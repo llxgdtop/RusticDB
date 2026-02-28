@@ -34,7 +34,7 @@ pub trait Transaction {
     fn scan_table(
         &self,
         table_name: String,
-        filter: Option<(String, Expression)>,
+        filter: Option<Expression>,
     ) -> Result<Vec<Row>>;
 
     // DDL operations
