@@ -99,7 +99,7 @@ impl Hash for Value {
                 v.to_be_bytes().hash(state);
             }
             Value::String(v) => {
-                state.write_u8(2);
+                state.write_u8(4);
                 v.hash(state);
             }
         }
