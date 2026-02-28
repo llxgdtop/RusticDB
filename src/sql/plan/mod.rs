@@ -68,12 +68,15 @@ pub enum Node {
     },
 
     /// Nested Loop Join execution node
+    ///
+    /// Implements join by iterating through all combinations of left and right rows.
+    /// Time complexity: O(n * m) where n and m are row counts of left and right tables.
     NestedLoopJoin {
         left: Box<Node>,
         right: Box<Node>,
-        /// Join ON condition (None for CROSS JOIN)
-        /// Expression should be an Operation variant, e.g., Operation(Equal(Field(col1), Consts(100)))
+        /// Join condition (None for CROSS JOIN)
         predicate: Option<Expression>,
+        /// true for LEFT/RIGHT JOIN, false for INNER/CROSS JOIN
         outer: bool,
     },
 
@@ -86,17 +89,17 @@ pub enum Node {
         group_by: Option<Expression>,
     },
 
-    /// Filter execution node (HAVING clause)
-    /// Filters aggregated results based on HAVING condition
+    /// Filter execution node for HAVING clause
     Filter {
-        /// Source node (typically an Aggregate node)
         source: Box<Node>,
-        /// HAVING predicate - must be an Operation variant (not optional, HAVING requires an expression)
         predicate: Expression,
     },
 }
 
 /// Execution plan wrapper
+///
+/// Wraps a plan node tree for execution. Built from an AST statement
+/// and executed against a transaction.
 #[derive(Debug, PartialEq)]
 pub struct Plan(pub Node);
 
@@ -106,6 +109,10 @@ impl Plan {
         Planner::new().build(stmt)
     }
 
+    /// Executes the plan against a transaction
+    ///
+    /// The transaction must have `'static` lifetime bound for
+    /// recursive executor building.
     pub fn execute<T: Transaction + 'static>(self, txn: &mut T) -> Result<ResultSet> {
         <dyn Executor<T>>::build(self.0).execute(txn)
     }

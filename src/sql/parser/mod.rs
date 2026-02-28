@@ -31,7 +31,6 @@ impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> Result<ast::Statement> {
         let stmt = self.parse_statement()?;
         self.next_expect(Token::Semicolon)?;
-        // No tokens allowed after semicolon
         if let Some(token) = self.peek()? {
             return Err(Error::Parse(format!("[Parser] Unexpected token {}", token)));
         }
@@ -94,7 +93,6 @@ impl<'a> Parser<'a> {
             primary_key: false,
         };
 
-        // Parse column constraints (NULL, NOT NULL, DEFAULT)
         while let Some(Token::Keyword(keyword)) = self.next_if_keyword() {
             match keyword {
                 Keyword::Null => column.nullable = Some(true),
@@ -169,7 +167,6 @@ impl<'a> Parser<'a> {
         };
 
         self.next_expect(Token::Keyword(Keyword::Values))?;
-        // Parse multiple value rows: INSERT INTO tbl VALUES (1,2),(3,4);
         let mut values = Vec::new();
         loop {
             self.next_expect(Token::OpenParen)?;
@@ -202,7 +199,6 @@ impl<'a> Parser<'a> {
         let table_name = self.next_ident()?;
         self.next_expect(Token::Keyword(Keyword::Set))?;
 
-        // Parse column assignments
         let mut columns = BTreeMap::new();
         loop {
             let col = self.next_ident()?;
@@ -240,12 +236,9 @@ impl<'a> Parser<'a> {
         })
     }
     
-    /// Parses operation expression (e.g., col_name = a becomes Field = Consts)
+    /// Parses comparison expression (e.g., col = value)
     fn parse_opreation_expr(&mut self) -> Result<ast::Expression> {
-        // Parse left operand first
         let left = self.parse_expression()?;
-        // Parse right operand based on operator type
-        // Result: e.g., Field(id) > Consts(100)
         Ok(match self.next()? {
             Token::Equal => ast::Expression::Operation(Operation::Equal(
                 Box::new(left),
@@ -263,28 +256,20 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Parses an expression (currently only constants)
+    /// Parses an expression (identifier, constant, or function call)
     fn parse_expression(&mut self) -> Result<ast::Expression> {
         Ok(match self.next()? {
             Token::Ident(ident) => {
-                // Function call: e.g., count(col_name)
-                //
-                // Why no Lexer changes needed?
-                // - Aggregate function names are identifiers, not keywords
-                // - Parser recognizes functions by Ident + ( pattern
-                // - Lexer changes needed only for new SQL reserved keywords
                 if self.next_if_token(Token::OpenParen).is_some() {
                     let col_name = self.next_ident()?;
                     self.next_expect(Token::CloseParen)?;
                     ast::Expression::Function(ident, col_name)
                 } else {
-                    // Column reference
                     ast::Expression::Field(ident)
                 }
             }
             Token::Number(n) => {
-                // Lexer scans both 123 and 123.45 as Token::Number(String)
-                // Need to distinguish between integer and float here
+                // Distinguish integer from float (both tokenized as Number)
                 if n.chars().all(|c| c.is_ascii_digit()) {
                     ast::Consts::Integer(n.parse()?).into()
                 } else {
@@ -309,12 +294,11 @@ impl<'a> Parser<'a> {
         self.next_expect(Token::Keyword(Keyword::Select))?;
 
         let mut select = Vec::new();
-        // SELECT * - return empty vec to indicate all columns
+        // SELECT * returns empty vec (all columns)
         if self.next_if_token(Token::Asterisk).is_some() {
             return Ok(select);
         }
 
-        // Parse column expressions with optional aliases
         loop {
             let expr = self.parse_expression()?;
             let alias = match self.next_if_token(Token::Keyword(Keyword::As)) {
@@ -329,47 +313,38 @@ impl<'a> Parser<'a> {
         Ok(select)
     }
 
-    /// Parses FROM clause (single table or multiple tables with JOINs)
-    ///
-    /// For multiple JOINs, the first two tables are joined first,
-    /// then the result becomes the left table for the next JOIN.
+    /// Parses FROM clause (single table or JOINs)
     fn parse_from_clause(&mut self) -> Result<ast::FromItem> {
         self.next_expect(Token::Keyword(Keyword::From))?;
         let mut item = self.parse_from_table_clause()?;
-        // Handle multiple JOINs: each iteration joins the previous result with a new table
         while let Some(join_type) = self.parse_from_clause_join()? {
             let left = Box::new(item);
             let right = Box::new(self.parse_from_table_clause()?);
-            // Parse join condition
             let predicate = match join_type {
-                ast::JoinType::Cross => None, // CROSS JOIN has no ON condition
+                ast::JoinType::Cross => None,
                 _ => {
                     self.next_expect(Token::Keyword(Keyword::On))?;
-                    // Left column
                     let l = self.parse_expression()?;
-                    // Expect equals sign
                     self.next_expect(Token::Equal)?;
-                    // Right column
                     let r = self.parse_expression()?;
 
                     let (l, r) = match join_type {
-                        // For RIGHT JOIN, swap to convert to LEFT JOIN
+                        // Convert RIGHT JOIN to LEFT JOIN by swapping
                         ast::JoinType::Right => (r, l),
                         _ => (l, r)
                     };
 
-                    // ON condition
                     let cond = Operation::Equal(Box::new(l), Box::new(r));
                     Some(ast::Expression::Operation(cond))
                 }
             };
 
-            item = ast::FromItem::Join { 
-                left, 
-                right, 
+            item = ast::FromItem::Join {
+                left,
+                right,
                 join_type,
                 predicate,
-            } 
+            }
         }
         Ok(item)
     }
@@ -381,19 +356,19 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Parses JOIN type (currently only CROSS JOIN supported)
+    /// Parses JOIN type if present
     fn parse_from_clause_join(&mut self) -> Result<Option<ast::JoinType>> {
         if self.next_if_token(Token::Keyword(Keyword::Cross)).is_some() {
             self.next_expect(Token::Keyword(Keyword::Join))?;
-            Ok(Some(ast::JoinType::Cross)) // Cross Join
+            Ok(Some(ast::JoinType::Cross))
         } else if self.next_if_token(Token::Keyword(Keyword::Join)).is_some() {
-            Ok(Some(ast::JoinType::Inner)) // Inner Join
+            Ok(Some(ast::JoinType::Inner))
         } else if self.next_if_token(Token::Keyword(Keyword::Left)).is_some() {
             self.next_expect(Token::Keyword(Keyword::Join))?;
-            Ok(Some(ast::JoinType::Left)) // Left Join
+            Ok(Some(ast::JoinType::Left))
         } else if self.next_if_token(Token::Keyword(Keyword::Right)).is_some() {
             self.next_expect(Token::Keyword(Keyword::Join))?;
-            Ok(Some(ast::JoinType::Right)) // Right Join
+            Ok(Some(ast::JoinType::Right))
         } else {
             Ok(None)
         }
@@ -409,10 +384,10 @@ impl<'a> Parser<'a> {
         Ok(Some(self.parse_expression()?))
     }
 
-    /// Parses WHERE clause (e.g., column_name = expr)
+    /// Parses WHERE clause if present
     fn parse_where_clause(&mut self) -> Result<Option<Expression>> {
         if self.next_if_token(Token::Keyword(Keyword::Where)).is_none() {
-            return Ok(None); // No WHERE condition
+            return Ok(None);
         }
         Ok(Some(self.parse_opreation_expr()?))
     }

@@ -6,8 +6,25 @@ mod mutation;
 mod query;
 mod join;
 
-/// SQL executor trait
+/// Executor trait for running execution plan nodes
+///
+/// Each executor consumes a plan node and produces a `ResultSet`.
+/// Executors form a tree structure matching the plan tree, with each
+/// node calling its children recursively during execution.
+///
+/// # Type Parameters
+/// - `T`: Transaction type implementing [`Transaction`] trait
+///
+/// # Example
+/// ```ignore
+/// let executor = Executor::build(plan_node);
+/// let result = executor.execute(&mut txn)?;
+/// ```
 pub trait Executor<T: Transaction> {
+    /// Executes the plan node within the given transaction
+    ///
+    /// Takes `Box<Self>` to allow executors to consume themselves,
+    /// avoiding additional allocation when building executor chains.
     fn execute(self: Box<Self>, txn: &mut T) -> Result<ResultSet>;
 }
 
@@ -30,7 +47,6 @@ impl<T: Transaction + 'static> dyn Executor<T> {
                 columns,
             } => Update::new(
                 table_name,
-                // Recursively build inner node (Scan node from planner.rs)
                 Self::build(*source),
                 columns),
             Node::Delete { table_name, source } => Delete::new(table_name, Self::build(*source)),
@@ -54,14 +70,17 @@ impl<T: Transaction + 'static> dyn Executor<T> {
     }
 }
 
-/// Execution result set
+/// Execution result returned by SQL statements
 #[derive(Debug, PartialEq)]
 pub enum ResultSet {
+    /// CREATE TABLE result
     CreateTable { table_name: String },
+    /// INSERT result with number of rows inserted
     Insert { count: usize },
+    /// SELECT/SCAN result with column names and row data
     Scan { columns: Vec<String>, rows: Vec<Row> },
+    /// UPDATE result with number of rows modified
     Update { count: usize },
-    Delete {
-        count: usize,
-    },
+    /// DELETE result with number of rows deleted
+    Delete { count: usize },
 }

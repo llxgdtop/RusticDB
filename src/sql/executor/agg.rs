@@ -11,7 +11,10 @@ use crate::{
 
 use super::{Executor, ResultSet};
 
-/// Aggregate executor - computes aggregate functions (COUNT, SUM, MIN, MAX, AVG)
+/// Aggregate executor for COUNT, SUM, MIN, MAX, AVG functions
+///
+/// Supports optional GROUP BY clause for grouping rows before aggregation.
+/// Without GROUP BY, the entire input is treated as a single group.
 pub struct Aggregate<T: Transaction> {
     source: Box<dyn Executor<T>>,
     exprs: Vec<(Expression, Option<String>)>,
@@ -37,23 +40,17 @@ impl<T: Transaction> Executor<T> for Aggregate<T> {
         if let ResultSet::Scan { columns, rows } = self.source.execute(txn)? {
             let mut new_cols = Vec::new();
             let mut new_rows = Vec::new();
-        
 
-            // Closure to compute aggregate values or extract group key values
-            // col_val: the group key value (None if no GROUP BY)
-            // rows: all rows in the group
-            // Example: SELECT c2, MIN(c1) FROM t GROUP BY c2;
+            // Compute aggregate values for a group of rows
             let mut calc = |col_val: Option<&Value>, rows: &Vec<Vec<Value>>| -> Result<Vec<Value>> {
                 let mut new_row = Vec::new();
                 for (expr, alias) in &self.exprs {
                     match expr {
-                        // Aggregate function - compute the result
                         ast::Expression::Function(func_name, col_name) => {
                             let calculator = <dyn Calculator>::build(&func_name)?;
                             let val = calculator.calc(&col_name, &columns, rows)?;
 
-                            // Build column name (use alias if provided, otherwise function name)
-                            // Guard prevents duplicate column names when processing multiple groups
+                            // Use alias if provided, otherwise use function name
                             if new_cols.len() < self.exprs.len() {
                                 new_cols.push(if let Some(a) = alias {
                                     a.clone()
@@ -63,16 +60,14 @@ impl<T: Transaction> Executor<T> for Aggregate<T> {
                             }
                             new_row.push(val);
                         }
-                        // Column reference (group key) - extract the value directly
+                        // Group key column
                         ast::Expression::Field(col) => {
-                            // Non-aggregate column without GROUP BY is an error
                             if self.group_by.is_none() {
                                 return Err(Error::Internal(format!(
                                     "column {} must appear in GROUP BY or be used in aggregate function",
                                     col
                                 )));
                             }
-                            // Verify column matches GROUP BY column
                             if let Some(ast::Expression::Field(group_col)) = &self.group_by {
                                 if *col != *group_col {
                                     return Err(Error::Internal(format!(
@@ -97,9 +92,7 @@ impl<T: Transaction> Executor<T> for Aggregate<T> {
                 Ok(new_row)
             };
 
-            // Process GROUP BY: group rows and compute aggregates for each group
             if let Some(ast::Expression::Field(group_col)) = &self.group_by {
-                // Find the group key column position
                 let pos = match columns.iter().position(|c| *c == *group_col) {
                     Some(pos) => pos,
                     None => {
@@ -110,8 +103,7 @@ impl<T: Transaction> Executor<T> for Aggregate<T> {
                     }
                 };
 
-                // Group rows by the group key value
-                // HashMap: key = group key value, value = all rows in that group
+                // Group rows by the group key
                 let mut agg_map: HashMap<&Value, Vec<Vec<Value>>> = HashMap::new();
                 for row in rows.iter() {
                     let key = &row[pos];
@@ -119,13 +111,12 @@ impl<T: Transaction> Executor<T> for Aggregate<T> {
                     value.push(row.clone());
                 }
 
-                // Compute aggregates for each group
                 for (key, group_rows) in agg_map {
                     let row = calc(Some(key), &group_rows)?;
                     new_rows.push(row);
                 }
             } else {
-                // No GROUP BY - treat entire table as one group
+                // No GROUP BY - aggregate entire table
                 let row = calc(None, &rows)?;
                 new_rows.push(row);
             }
@@ -139,7 +130,10 @@ impl<T: Transaction> Executor<T> for Aggregate<T> {
     }
 }
 
-/// Trait for aggregate function calculations
+/// Trait for aggregate function implementations
+///
+/// Each aggregate function (COUNT, SUM, etc.) implements this trait
+/// to compute its result from a set of values.
 pub trait Calculator {
     fn calc(&self, col_name: &String, cols: &Vec<String>, rows: &Vec<Vec<Value>>) -> Result<Value>;
 }
@@ -158,7 +152,7 @@ impl dyn Calculator {
     }
 }
 
-/// COUNT - counts non-null values in a column
+/// COUNT aggregate function
 pub struct Count;
 
 impl Count {
@@ -184,7 +178,7 @@ impl Calculator for Count {
     }
 }
 
-/// MIN - finds minimum value in a column
+/// MIN aggregate function
 pub struct Min;
 
 impl Min {
@@ -215,7 +209,7 @@ impl Calculator for Min {
     }
 }
 
-/// MAX - finds maximum value in a column
+/// MAX aggregate function
 pub struct Max;
 
 impl Max {
@@ -246,7 +240,7 @@ impl Calculator for Max {
     }
 }
 
-/// SUM - calculates sum of values in a column
+/// SUM aggregate function
 pub struct Sum;
 
 impl Sum {
@@ -289,7 +283,7 @@ impl Calculator for Sum {
     }
 }
 
-/// AVG - calculates average of values in a column
+/// AVG aggregate function
 pub struct Avg;
 
 impl Avg {
@@ -300,7 +294,6 @@ impl Avg {
 
 impl Calculator for Avg {
     fn calc(&self, col_name: &String, cols: &Vec<String>, rows: &Vec<Vec<Value>>) -> Result<Value> {
-        // AVG = SUM / COUNT
         let sum = Sum::new().calc(col_name, cols, rows)?;
         let count = Count::new().calc(col_name, cols, rows)?;
         Ok(match (sum, count) {
